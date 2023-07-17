@@ -122,10 +122,14 @@ def download_and_package(
                     elif "zho" not in page["content_language"].split(","):
                         continue
                     
-                    regitry_country = url_confirm(page["url"])
+                    try:
+                        regitry_country = url_confirm(page["url"])
                     
-                    if regitry_country == False:
-                        continue
+                        if regitry_country == False:
+                            continue
+                    
+                    except:
+                        pass
 
                 page_list.append(page)
             break
