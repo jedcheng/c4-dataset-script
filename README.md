@@ -33,7 +33,7 @@ conda pack --name c4-env -o c4-env.tar.gz
 # 2. Submit to spark cluster
 PYSPARK_DRIVER_PYTHON=python \
 PYSPARK_PYTHON=./environment/bin/python \
-python c4_dataset_script/c4_script.py \
+python c4_dataset_script/c4.py \
     --wet-file-paths $PATH_TO_YOUR_CC_WET_FILE \
     --c4-save-path $PATH_TO_YOUR_C4_OUTPUT \
     --spark-master $SPARK_MASTER_ADDR \
