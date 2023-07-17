@@ -13,6 +13,7 @@ import langdetect
 import requests
 from tqdm import tqdm
 
+import whois
 
 CC_DOMAIN = "https://data.commoncrawl.org"
 
@@ -120,6 +121,11 @@ def download_and_package(
                             continue
                     elif "zho" not in page["content_language"].split(","):
                         continue
+                    
+                    regitry_country = url_confirm(page["url"])
+                    
+                    if regitry_country != "HK":
+                        continue
 
                 page_list.append(page)
             break
@@ -128,6 +134,21 @@ def download_and_package(
 
     for page in page_list:
         yield page
+
+
+
+
+def url_confirm(url):
+    
+    domain = url.split("/")[2]
+    
+    who_is_query = whois.query(domain)
+    who_is_dict = who_is_query.__dict__
+    
+    return who_is_dict["registrant_country"]
+
+
+
 
 
 def read_wet_paths_file(filepath):
@@ -140,7 +161,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--wet-paths", nargs="+", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--spark-sub-job", default=50, type=int,
+    parser.add_argument("--spark-sub-job", default=150, type=int,
         help="From the data dimention, divide the spark job into sub-jobs, reducing the loss of job failed.")
     args = parser.parse_args()
 
