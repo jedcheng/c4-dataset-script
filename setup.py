@@ -15,7 +15,7 @@ setup(
     name="c4-dataset-script",
     author="Jianbin Chang",
     author_email="shjwudp@gmail.com",
-    url="https://github.com/shjwudp/c4-dataset-script",
+    url="https://github.com/jedcheng/c4-dataset-script",
     license="MIT",
     packages=find_packages(),
     package_data={
