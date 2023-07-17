@@ -124,7 +124,7 @@ def download_and_package(
                     
                     regitry_country = url_confirm(page["url"])
                     
-                    if regitry_country != "HK":
+                    if regitry_country == False:
                         continue
 
                 page_list.append(page)
@@ -140,13 +140,17 @@ def download_and_package(
 
 def url_confirm(url):
     
-    domain = url.split("/")[2]
+    who_is_query = whois.whois(url)
     
-    who_is_query = whois.query(domain)
-    who_is_dict = who_is_query.__dict__
+    results_dict = who_is_query.__dict__
+    results_dict = results_dict["text"]
     
-    return who_is_dict["registrant_country"]
-
+    if "Registrant Country: HK" in results_dict:
+        return True
+    
+    return False
+    
+    
 
 
 
