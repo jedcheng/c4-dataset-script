@@ -121,15 +121,6 @@ def download_and_package(
                             continue
                     elif "zho" not in page["content_language"].split(","):
                         continue
-                    
-                    # try:
-                    #     regitry_country = url_confirm(page["url"])
-                    
-                    #     if regitry_country == False:
-                    #         continue
-                    
-                    # except:
-                    #     pass
 
                 page_list.append(page)
             break
@@ -141,23 +132,7 @@ def download_and_package(
 
 
 
-
-# def url_confirm(url):
     
-#     who_is_query = whois.whois(url)
-    
-#     results_dict = who_is_query.__dict__
-#     results_dict = results_dict["text"]
-    
-#     if "Registrant Country: HK" in results_dict:
-#         return True
-    
-#     return False
-    
-    
-
-
-
 
 def read_wet_paths_file(filepath):
     for line in gzip.open(filepath, "rt"):
@@ -169,8 +144,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--wet-paths", nargs="+", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--spark-sub-job", default=150, type=int,
+    parser.add_argument("--spark-sub-job", default=50, type=int,
         help="From the data dimention, divide the spark job into sub-jobs, reducing the loss of job failed.")
+    parser.add_argument("--array_index", default=0, type=int)
     args = parser.parse_args()
 
     spark = SparkSession.builder\
@@ -181,7 +157,14 @@ def main():
     for wet_path in args.wet_paths:
         for cc_path in read_wet_paths_file(wet_path):
             cc_paths.append(cc_path)
-
+    
+    
+    array_index = args.array_index
+    cc_paths = cc_paths[int(array_index * 20000):int((array_index + 1) * 20000)]
+    
+    
+    
+    
     for i in range(args.spark_sub_job):
         batch_size = len(cc_paths) // args.spark_sub_job + 1
         input =  cc_paths[i * batch_size: (i + 1) * batch_size]
