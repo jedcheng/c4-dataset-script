@@ -8,7 +8,6 @@ REQUIRED_PKGS = [
     "nltk",
     "langdetect",
     "apache_beam",
-    "python-whois",
 ]
 
 setup(
