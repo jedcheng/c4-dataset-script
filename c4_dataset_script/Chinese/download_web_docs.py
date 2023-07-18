@@ -160,7 +160,7 @@ def main():
     
     
     array_index = args.array_index
-    cc_paths = cc_paths[int(array_index * 20000):int((array_index + 1) * 20000)]
+    cc_paths = cc_paths[int(array_index * 10000):int((array_index + 1) * 10000)]
     
     
     
