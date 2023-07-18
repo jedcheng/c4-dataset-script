@@ -13,7 +13,7 @@ import langdetect
 import requests
 from tqdm import tqdm
 
-import whois
+# import whois
 
 CC_DOMAIN = "https://data.commoncrawl.org"
 
@@ -117,19 +117,19 @@ def download_and_package(
                             language = langdetect.detect(page["text"])
                         except langdetect.lang_detect_exception.LangDetectException:
                             continue
-                        if language not in ["zh-cn", "zh-tw"]:
+                        if language not in ["zh-tw", "zh-cn"]:
                             continue
                     elif "zho" not in page["content_language"].split(","):
                         continue
                     
-                    try:
-                        regitry_country = url_confirm(page["url"])
+                    # try:
+                    #     regitry_country = url_confirm(page["url"])
                     
-                        if regitry_country == False:
-                            continue
+                    #     if regitry_country == False:
+                    #         continue
                     
-                    except:
-                        pass
+                    # except:
+                    #     pass
 
                 page_list.append(page)
             break
@@ -142,17 +142,17 @@ def download_and_package(
 
 
 
-def url_confirm(url):
+# def url_confirm(url):
     
-    who_is_query = whois.whois(url)
+#     who_is_query = whois.whois(url)
     
-    results_dict = who_is_query.__dict__
-    results_dict = results_dict["text"]
+#     results_dict = who_is_query.__dict__
+#     results_dict = results_dict["text"]
     
-    if "Registrant Country: HK" in results_dict:
-        return True
+#     if "Registrant Country: HK" in results_dict:
+#         return True
     
-    return False
+#     return False
     
     
 
