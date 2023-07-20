@@ -18,28 +18,6 @@ python -m nltk.downloader -d $(which python | xargs dirname)/../nltk_data punkt
 #    make sure you have JDK installed and JAVA_HOME configured.
 ```
 
-If everything goes well, you can make the C4 dataset on localhost.
-
-```bash
-python -m c4_dataset_script.c4_script --wet-file-paths $PATH_TO_YOUR_CC_WET_FILE
-```
-
-Or submit to spark cluster.
-
-```bash
-# 1. Before submitting to the cluster, you need to package the environment conda env
-conda pack --name c4-env -o c4-env.tar.gz
-
-# 2. Submit to spark cluster
-PYSPARK_DRIVER_PYTHON=python \
-PYSPARK_PYTHON=./environment/bin/python \
-python c4_dataset_script/c4.py \
-    --wet-file-paths $PATH_TO_YOUR_CC_WET_FILE \
-    --c4-save-path $PATH_TO_YOUR_C4_OUTPUT \
-    --spark-master $SPARK_MASTER_ADDR \
-    --spark-archives c4-env.tar.gz#environment
-```
-
 ## Make colossal cleaned Chinese web corpus
 
 Referring to the method of C4, there is a data processing pipeline building for a cleaned Chinese web corpus. It includes web page download, Chinese recognition, heuristics text filter method, toxic recognition and filter, and Repetition Removal used in Google/DeepMind MassiveText.
@@ -52,6 +30,10 @@ Common Crawl organized crawled data into some archives. You can browse the archi
 cd c4_dataset_script
 wget -r --no-parent https://data.commoncrawl.org/crawl-data/${CRAWL_ARCHIVE_ID}/wet.paths.gz
 ```
+
+
+Alternatively, one can use the [bash script] written for PBS cluster to do so by splitting the entire process into 8 parts
+
 
 *You can get CRAWL_ARCHIVE_ID [here](https://commoncrawl.org/the-data/get-started/). For instance: CC-MAIN-2022-49.*
 
