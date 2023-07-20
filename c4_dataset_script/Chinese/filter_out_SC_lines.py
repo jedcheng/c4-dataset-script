@@ -59,7 +59,7 @@ def main():
             continue
 
         if args.SC_words_filepath is not None:
-            if is_SC_doc(args, j["text"], args.SCwords_filepath):
+            if is_SC_doc(args, j["text"], args.SC_words_filepath):
                 print(json.dumps(j, ensure_ascii=False), file=SC_lines_file)
                 continue
 
