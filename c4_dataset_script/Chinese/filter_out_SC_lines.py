@@ -58,13 +58,13 @@ def main():
         except:
             continue
 
-        # if args.SC_words_filepath is not None:
-        #     if is_SC_doc(args, j["text"], args.SC_words_filepath):
-        #         print(json.dumps(j, ensure_ascii=False), file=SC_lines_file)
-        #         continue
+        if args.SC_words_filepath is not None:
+            if is_SC_doc(args, j["text"], args.SC_words_filepath):
+                # print(json.dumps(j, ensure_ascii=False), file=SC_lines_file)
+                continue
 
         output = []
-        SC_lines = []
+        # SC_lines = []
         for line in j["text"].splitlines():
             line = line.strip()
             
@@ -73,12 +73,12 @@ def main():
         if len(output) > 5:
             j["text"] = '\n'.join(output)
             print(json.dumps(j, ensure_ascii=False))
-        else:
-            SC_lines += output
+        # else:
+        #     SC_lines += output
 
-        if len(SC_lines) > 0:
-            j["text"] = '\n'.join(SC_lines)
-            print(json.dumps(j, ensure_ascii=False), file=SC_lines_file)
+        # if len(SC_lines) > 0:
+        #     j["text"] = '\n'.join(SC_lines)
+        #     print(json.dumps(j, ensure_ascii=False), file=SC_lines_file)
 
 
 if __name__ == "__main__":
