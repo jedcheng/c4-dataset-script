@@ -24,7 +24,7 @@ def parse_args():
     )
     parser.add_argument("--output_SC_lines", default="SC_lines.jsonl.zst",
         help="output file for SC lines")
-    parser.add_argument("--SC_words_ratio", default=0.05, type=float,
+    parser.add_argument("--SC_words_ratio", default=0.1, type=float,
         help="Document filtering conditions, when the number of SC words in the document exceeds this ratio, it will be screened out.")
 
     args = parser.parse_args()
@@ -58,15 +58,17 @@ def main():
         except:
             continue
 
-        if args.SC_words_filepath is not None:
-            if is_SC_doc(args, j["text"], args.SC_words_filepath):
-                print(json.dumps(j, ensure_ascii=False), file=SC_lines_file)
-                continue
+        # if args.SC_words_filepath is not None:
+        #     if is_SC_doc(args, j["text"], args.SC_words_filepath):
+        #         print(json.dumps(j, ensure_ascii=False), file=SC_lines_file)
+        #         continue
 
         output = []
         SC_lines = []
         for line in j["text"].splitlines():
             line = line.strip()
+            
+            output.append(line)
 
         if len(output) > 5:
             j["text"] = '\n'.join(output)
