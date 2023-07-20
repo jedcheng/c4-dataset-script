@@ -32,7 +32,7 @@ wget -r --no-parent https://data.commoncrawl.org/crawl-data/${CRAWL_ARCHIVE_ID}/
 ```
 
 
-Alternatively, one can use the [bash script] written for PBS cluster to do so by splitting the entire process into 8 parts
+Alternatively, one can use the bash scripts written for PBS cluster to do so by splitting the entire process into 8 parts. Since step 3 is a single-threaded process, it is highly recommended to run the job by splitting it into 8 parts.
 
 
 *You can get CRAWL_ARCHIVE_ID [here](https://commoncrawl.org/the-data/get-started/). For instance: CC-MAIN-2022-49.*
@@ -66,6 +66,9 @@ cat ./download-docs/*/part-* | \
 
 *About 93.57% of documents are filtered out in this stage. You can see samples of filtered documents [here](data/Chinese_bad-lines_samples.jsonl).*
 
+
+
+
 ## 4. Remove duplicated text
 
 To eliminate duplicate text, I use the text deduplication strategy from C4. The algorithm divides the document into lines, hashes them, and removes any duplicate lines from the dataset. This effective approach is particularly useful for removing repeated header and footer content.
@@ -76,6 +79,7 @@ spark-submit --master ${SPARK_MASTER_ADDR} \
         --input clean_docs.jsonl \
         --output ./deduplicated_text
 ```
+
 
 *About 62.67% of documents are filtered out in this stage. You can see samples of filtered lines [here](data/Chinese_Remove-Duplicated-Text_samples.jsonl).*
 
