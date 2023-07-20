@@ -2,6 +2,10 @@
 
 [C4](https://www.tensorflow.org/datasets/catalog/c4) is a great way to get a colossal cleaned web corpus. Unfortunately, Google open-sourced c4 script highly depends on GCP and code mixed in a big repo. Therefore, it takes work to develop it freely. This repository extracts the processing logic and implements it to run on Spark. In addition, some helpful data process method in MassiveText is implemented in massivetext_utils.py.
 
+
+The original [repo](https://github.com/shjwudp/c4-dataset-script) is amazing. I further customized based on the code to run on a PBS cluster as well as adding a filter to filter out simplified Chinese entries. 
+
+
 ## Run c4 script on Spark
 
 Setup c4 work environment.
@@ -18,9 +22,6 @@ python -m nltk.downloader -d $(which python | xargs dirname)/../nltk_data punkt
 #    make sure you have JDK installed and JAVA_HOME configured.
 ```
 
-## Make colossal cleaned Chinese web corpus
-
-Referring to the method of C4, there is a data processing pipeline building for a cleaned Chinese web corpus. It includes web page download, Chinese recognition, heuristics text filter method, toxic recognition and filter, and Repetition Removal used in Google/DeepMind MassiveText.
 
 ## 1. Download the WET crawl archive index file
 
@@ -30,12 +31,8 @@ Common Crawl organized crawled data into some archives. You can browse the archi
 cd c4_dataset_script
 wget -r --no-parent https://data.commoncrawl.org/crawl-data/${CRAWL_ARCHIVE_ID}/wet.paths.gz
 ```
-
-
-Alternatively, one can use the bash scripts written for PBS cluster to do so by splitting the entire process into 8 parts. Since step 3 is a single-threaded process, it is highly recommended to run the job by splitting it into 8 parts.
-
-
 *You can get CRAWL_ARCHIVE_ID [here](https://commoncrawl.org/the-data/get-started/). For instance: CC-MAIN-2022-49.*
+
 
 ## 2. Run download and Chinese screening script on Spark
 
@@ -45,6 +42,13 @@ spark-submit --master ${SPARK_MASTER_ADDR} \
         --wet-paths ./data.commoncrawl.org/crawl-data/${CRAWL_ARCHIVE_ID}/wet.paths.gz \
         --output ./download-docs
 ```
+
+
+Alternatively, one can use the bash scripts written for PBS cluster to do so by splitting the entire process into 8 parts. 
+This process took about 2 hours and downloaded 900GB of data. 
+Since step 3 is a single-threaded process, it is highly recommended to run the job by splitting it into 8 parts. 
+
+
 
 ## 3. Filter out non-sentence lines and toxic document
 
@@ -64,6 +68,9 @@ cat ./download-docs/*/part-* | \
          > clean_docs.jsonl
 ```
 
+By splitting into 8 parts and using the [script](https://github.com/jedcheng/c4-dataset-script/blob/master/bash_script/filter_download.sh), the processing time varies from 3 to 8 hours.
+
+
 *About 93.57% of documents are filtered out in this stage. You can see samples of filtered documents [here](data/Chinese_bad-lines_samples.jsonl).*
 
 
@@ -82,6 +89,9 @@ spark-submit --master ${SPARK_MASTER_ADDR} \
 
 
 *About 62.67% of documents are filtered out in this stage. You can see samples of filtered lines [here](data/Chinese_Remove-Duplicated-Text_samples.jsonl).*
+
+
+
 
 ## 5. Remove documents that are over self-repeating - Repetition Removal in DeepMind MassiveText
 
