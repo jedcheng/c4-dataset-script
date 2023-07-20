@@ -3,7 +3,7 @@
 ## ask PBS for time (format hh:mm:ss)
 #PBS -l walltime=08:00:00
 #
-#PBS -l select=1:ncpus=64:mem=128gb:cpu_type=rome
+#PBS -l select=1:ncpus=64:mem=64gb:cpu_type=rome
 #PBS -J 0-7
 module load anaconda3/personal
 source activate c4-env
