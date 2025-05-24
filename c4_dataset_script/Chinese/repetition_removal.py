@@ -106,6 +106,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", default="./rr_output")
+    parser.add_argument("--output_bad_docs", type=bool, default=False,)
     args = parser.parse_args()
 
     spark = SparkSession.builder\
@@ -113,18 +114,20 @@ def main():
             .getOrCreate()
 
     docs = spark.sparkContext.textFile(args.input)\
-        .repartition(64)\
+        .repartition(240)\
         .map(lambda line: json.loads(line))\
         .map(lambda doc: (doc, is_repetition_removal(doc["text"])))
 
     clean_docs = docs.filter(lambda x: not x[1])\
         .map(lambda x: json.dumps(x[0], ensure_ascii=False))
-
-    bad_docs = docs.filter(lambda x: x[1])\
-        .map(lambda x: json.dumps(x[0], ensure_ascii=False))
-
+    
     clean_docs.saveAsTextFile(os.path.join(args.output, "clean_docs"))
-    bad_docs.saveAsTextFile(os.path.join(args.output, "bad_docs"))
+
+    if args.output_bad_docs:
+        bad_docs = docs.filter(lambda x: x[1])\
+            .map(lambda x: json.dumps(x[0], ensure_ascii=False))
+        bad_docs.saveAsTextFile(os.path.join(args.output, "bad_docs"))
+
 
 
 if __name__ == "__main__":

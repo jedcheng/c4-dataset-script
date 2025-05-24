@@ -26,7 +26,6 @@ def parse_args():
         help="output file for bad lines")
     parser.add_argument("--bad_words_ratio", default=0.05, type=float,
         help="Document filtering conditions, when the number of bad words in the document exceeds this ratio, it will be screened out.")
-
     args = parser.parse_args()
 
     return args

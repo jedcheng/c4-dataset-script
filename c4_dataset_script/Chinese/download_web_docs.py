@@ -81,21 +81,19 @@ def split_wet_file(wet_file_path):
         yield page
 
 
-def request_with_retry(connection_reset_retry=20, *args, **kwargs):
+def request_with_retry(connection_reset_retry=100, *args, **kwargs):
     retries = 0
     while True:
         try:
             response = requests.get(*args, **kwargs, timeout=3600)
+            if response.status_code == 503:
+                raise requests.exceptions.RequestException("503")
             return response
-        except (
-            ConnectionResetError,
-            requests.exceptions.ConnectionError,
-            requests.exceptions.ChunkedEncodingError,
-        ):
-            if retries >= connection_reset_retry:
+        except:
+            if retries > connection_reset_retry:
                 logging.info(f"{args}")
                 raise
-            time.sleep(2 ** retries)
+            time.sleep(2 * retries)
             retries += 1
 
 
@@ -106,7 +104,7 @@ def download_and_package(
     logging.basicConfig(level=logging.DEBUG)
 
     for _ in range(10):
-        response = request_with_retry(url=f"{CC_DOMAIN}/{cc_path}")
+        response = request_with_retry(connection_reset_retry=100, url=f"{CC_DOMAIN}/{cc_path}")
         download_file = io.BytesIO(response.content)
         page_list = []
         try:
@@ -160,15 +158,18 @@ def main():
     
     
     array_index = args.array_index
-    cc_paths = cc_paths[int(array_index * 10000):int((array_index + 1) * 10000)]
+    cc_paths = cc_paths[int(array_index * 5000):int((array_index + 1) * 5000)]
     
     
-    
+    output_dir_base = args.output + "_" + str(array_index)
+
+    if not os.path.exists(output_dir_base):
+        os.makedirs(output_dir_base)
     
     for i in range(args.spark_sub_job):
         batch_size = len(cc_paths) // args.spark_sub_job + 1
         input =  cc_paths[i * batch_size: (i + 1) * batch_size]
-        output_dir = os.path.join(args.output, str(i))
+        output_dir = os.path.join(output_dir_base, str(i))
         rdd = spark.sparkContext.parallelize(input)\
             .repartition(128)\
             .flatMap(lambda cc_path: download_and_package(cc_path, args.output))\

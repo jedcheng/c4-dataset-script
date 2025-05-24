@@ -8,11 +8,13 @@ REQUIRED_PKGS = [
     "nltk",
     "langdetect",
     "apache_beam",
+    "jieba",
+    "cantonesedetect"
 ]
 
 setup(
     name="c4-dataset-script",
-    author="Jianbin Chang",
+    author="Jed Cheng",
     author_email="shjwudp@gmail.com",
     url="https://github.com/jedcheng/c4-dataset-script",
     license="MIT",

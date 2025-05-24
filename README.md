@@ -36,6 +36,13 @@ wget -r --no-parent https://data.commoncrawl.org/crawl-data/${CRAWL_ARCHIVE_ID}/
 
 ## 2. Run download and Chinese screening script on Spark
 
+All the following commands are outdated. I am too lazy to update them.
+Please use the bash scripts written for PBS cluster to do so by splitting the entire process into 20 parts.
+
+There are 100,000 files in the WET crawl. Divide into 20 jobs each with 5,000 files.
+Don't rush all the files at once, you will miss out a lot of files.
+
+
 ```bash
 spark-submit --master ${SPARK_MASTER_ADDR} \
     Chinese/download_web_docs.py \
@@ -44,9 +51,7 @@ spark-submit --master ${SPARK_MASTER_ADDR} \
 ```
 
 
-Alternatively, one can use the bash scripts written for PBS cluster to do so by splitting the entire process into 8 parts. 
-This process took about 2 hours and downloaded 900GB of data. 
-Since step 3 is a single-threaded process, it is highly recommended to run the job by splitting it into 8 parts. 
+
 
 
 
@@ -68,10 +73,10 @@ cat ./download-docs/*/part-* | \
          > clean_docs.jsonl
 ```
 
-By splitting into 8 parts and using the [script](https://github.com/jedcheng/c4-dataset-script/blob/master/bash_script/filter_download.sh), the processing time varies from 3 to 8 hours.
-
-
 *About 93.57% of documents are filtered out in this stage. You can see samples of filtered documents [here](data/Chinese_bad-lines_samples.jsonl).*
+
+
+This part is yet to be parallelized. The script uses the old logic of cat and pipe, which is not efficient. I will migrate this to Spark just like the other parts.
 
 
 
@@ -105,3 +110,16 @@ spark-submit --master ${SPARK_MASTER_ADDR} \
 ```
 
 *About 21.21% of documents are filtered out in this stage. You can see samples of filtered documents [here](data/Chinese_Repetition-Removal_samples.jsonl).*
+
+## 6. Remove Simplified Chinese documents (optional)
+This step is optional. I have optimized the script to use Spark to do the job in parallel.
+Refer to the SC_filter folder for how I obtained the list of simplified Chinese characters (TLDR I manually removed words that are shared between simplified and traditional Chinese from a list of simplified Chinese characters). 
+
+
+
+## 7. Filter Cantonese documents (optional)
+As a researchers in Cantonese NLP, we are interested in Cantonese documents. Using [Cantonese Detect](https://github.com/CanCLID/cantonesedetect) to extract Cantonese documents for further research. 
+
+The size of the dataset went from 21GB after removing simplified Chinese to 110MB. This is why Cantonese is a low resource language.
+
+You can choose whether to include Cantonese quotes in written Chinese documents as well as splitting the documents in phases for higher accuracy but lower recall. 

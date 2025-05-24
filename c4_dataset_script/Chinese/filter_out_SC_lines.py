@@ -1,4 +1,4 @@
-"""This script filter out non-sentence lines and toxic text.
+"""This script filter out simplified Chinese entries in the dataset.
 
 ```bash
 cat docs.jsonl | python filter_out_SC_lines.py --SC_words_filepath ../badwords/SC_list.txt > clean_docs.jsonl
@@ -24,7 +24,7 @@ def parse_args():
     )
     parser.add_argument("--output_SC_lines", default="SC_lines.jsonl.zst",
         help="output file for SC lines")
-    parser.add_argument("--SC_words_ratio", default=0.1, type=float,
+    parser.add_argument("--SC_words_ratio", default=0.01, type=float,
         help="Document filtering conditions, when the number of SC words in the document exceeds this ratio, it will be screened out.")
 
     args = parser.parse_args()
@@ -40,7 +40,7 @@ def is_SC_doc(args, doc, SCwords_filepath):
     for SC_word in open(SCwords_filepath):
         SC_word = SC_word.strip()
         if SC_word in doc:
-            SC_words_character_count += doc.count(SC_word) * len(SC_word)
+            SC_words_character_count += doc.count(SC_word) # only 1 character for all words
 
     if SC_words_character_count / len(doc) > args.SC_words_ratio:
         return True
@@ -50,7 +50,7 @@ def is_SC_doc(args, doc, SCwords_filepath):
 
 def main():
     args = parse_args()
-    SC_lines_file = gzip.open(args.output_SC_lines, "wt")
+    # SC_lines_file = gzip.open(args.output_SC_lines, "wt")
 
     for line in tqdm(sys.stdin):
         try:
