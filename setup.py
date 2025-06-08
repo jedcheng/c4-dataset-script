@@ -9,6 +9,7 @@ REQUIRED_PKGS = [
     "langdetect",
     "apache_beam",
     "jieba",
+    "ahocorasick",
     "cantonesedetect"
 ]
 
