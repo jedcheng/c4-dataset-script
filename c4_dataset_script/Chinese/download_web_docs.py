@@ -1,5 +1,5 @@
 # Copyright (c) 2022 Jianbin Chang
-
+import ahocorasick
 import argparse
 import json
 import gzip
@@ -25,6 +25,27 @@ _CONTENT_TYPE = "Content-Type:"
 _CONTENT_LANGUAGE = "WARC-Identified-Content-Language:"
 _METADATA_PREFIXES = ("WARC", "CONTENT-", "Content-")
 
+def build_sc_automaton(sc_words_list):
+    """Builds and returns an Aho-Corasick automaton from a word list."""
+    A = ahocorasick.Automaton()
+    # Use a set to handle duplicates and strip whitespace
+    clean_words = {word.strip() for word in sc_words_list if word.strip()}
+    for index, keyword in enumerate(clean_words):
+        A.add_word(keyword, len(keyword)) # Store word length for efficiency
+    A.make_automaton()
+    return A
+
+def build_badword_automaton(badwords_list):
+    """Builds and returns an Aho-Corasick automaton for case-sensitive matching."""
+    A = ahocorasick.Automaton()
+    # Use a set to remove duplicates and ignore empty strings
+    bad_words = {word.strip() for word in badwords_list if word.strip()}
+    for index, keyword in enumerate(bad_words):
+        # Store the length of the keyword as the value, which we can sum up later.
+        A.add_word(keyword, len(keyword))
+    A.make_automaton()
+    return A
+
 
 def check_if_gz_file_corrupted(gz_file):
     chunksize = 10 * 1024 ** 2
@@ -39,35 +60,45 @@ def check_if_gz_file_corrupted(gz_file):
 
 import re
 
-def is_bad_line(line):
-    ending_punctuations = ["。", "！", "？", "……", "”", "："]
-    if not any(line.endswith(punc) for punc in ending_punctuations):
+ILL_WORD_REGEX = re.compile("[-□■�]") # Simplified the regex pattern as well
+
+# 2. Define constants outside the function.
+# 3. Use a tuple for `endswith`, which is faster than iterating a list.
+ENDING_PUNCTUATIONS = ("。", "！", "？", "……", "”", "：")
+MIN_LINE_LENGTH = 5
+
+def is_bad_line(line: str) -> bool:
+    """
+    Optimized check for a bad line.
+    Checks are ordered from cheapest to most expensive for fast short-circuiting.
+    """
+    # 4. Check cheapest condition first (length).
+    if len(line) < MIN_LINE_LENGTH:
         return True
 
-    if len(line) < 5:
+    # 5. Check next cheapest (endswith with a tuple).
+    if not line.endswith(ENDING_PUNCTUATIONS):
         return True
 
-    ill_word_regex = "[-]|□|■|�"
-
-    if re.search(ill_word_regex, line) != None:
+    # 6. Check most expensive condition last (regex search).
+    #    Using the pre-compiled regex object.
+    #    The `if regex.search(line):` is a more idiomatic check than `!= None`.
+    if ILL_WORD_REGEX.search(line):
         return True
 
     return False
 
-def is_bad_doc(doc_text, badwords_list, ratio_threshold=0.05):
-    """Check if text contains too many bad words."""
-    if not badwords_list:
+def is_bad_doc(doc_text, badword_automaton, ratio_threshold=0.05):
+    """Efficiently check for bad words using a pre-built Aho-Corasick automaton."""
+    doc_len = len(doc_text)
+    if doc_len == 0:
         return False
-        
-    bad_words_character_count = 0
-    for bad_word in badwords_list:
-        if bad_word in doc_text:
-            bad_words_character_count += doc_text.count(bad_word) * len(bad_word)
     
-    if bad_words_character_count / len(doc_text) > ratio_threshold:
-        return True
-    return False
+    # The .iter() method finds all non-overlapping matches in one pass.
+    # The `value` we get is the length of the bad word we stored earlier.
+    total_bad_chars = sum(value for end_index, value in badword_automaton.iter(doc_text))
 
+    return (total_bad_chars / doc_len) > ratio_threshold
 
 def load_word_list(filepath):
     """Load a word list from a file."""
@@ -77,61 +108,90 @@ def load_word_list(filepath):
     with open(filepath, 'r') as f:
         return [line.strip() for line in f if line.strip()]
 
-def is_SC_doc(doc_text, SC_words_list, ratio_threshold): 
-    """Check if a document contains too many simplified Chinese words.""" 
-    SC_words_character_count = 0 
 
-    for SC_word in SC_words_list: 
-        SC_word = SC_word.strip()
-        if SC_word in doc_text: 
-            SC_words_character_count += doc_text.count(SC_word)* len(SC_word)
 
-    if SC_words_character_count / len(doc_text) > ratio_threshold:
-        return True
-    return False
+def is_SC_doc(doc_text, sc_automaton, ratio_threshold):
+    """
+    Efficiently checks if a document contains a high ratio of Simplified Chinese words.
+    
+    Args:
+        doc_text (str): The input HTML document text.
+        sc_automaton (ahocorasick.Automaton): The pre-built automaton.
+        ratio_threshold (float): The ratio of SC characters to total characters to exceed.
+        
+    Returns:
+        bool: True if the ratio is exceeded, False otherwise.
+    """
+    clean_text_len = len(doc_text)
+
+    if clean_text_len == 0:
+        return False
+
+    sc_character_count = sum(result[1] for result in sc_automaton.iter(doc_text))
+
+    return (sc_character_count / clean_text_len) > ratio_threshold
+
 
 
 def split_wet_file(wet_file_path):
+    """
+    Optimized WET file parser.
+    - Uses a list and .join() for efficient text aggregation.
+    - Uses an if/elif/else structure to avoid redundant checks.
+    - Assumes content lines are the most common and places them in the 'else' block.
+    """
     def _validate_features(page):
-        feature_list = ["url", "text", "timestamp"]
-        for feature_name in feature_list:
-            if feature_name not in page:
-                return False
+        # This function is fast enough, no changes needed.
+        return "url" in page and "text" in page and "timestamp" in page
 
-        return True
+    page = {}
+    content_lines = []
 
-    page = dict()
-    for i, line in enumerate(gzip.open(wet_file_path, "rt")):
-        line = line.strip()
-        if not line:
-            continue
+    # Using 'rb' and decoding manually can be faster with large buffers,
+    # but 'rt' is simpler and the following optimizations are more critical.
+    with gzip.open(wet_file_path, "rt", encoding='utf-8', errors='ignore') as f:
+        for line in f:
+            # The page delimiter is the start of a new record's header
+            ls = line.strip()
+            if ls == _PAGE_DELIMITER:
+                if page and content_lines:
+                    # Finalize the previous page
+                    page["text"] = "\n".join(content_lines)
+                    if _validate_features(page):
+                        yield page
 
-        if line == _PAGE_DELIMITER:
-            if i > 0 and _validate_features(page):
-                yield page
-            page = dict()
+                # Reset for the new page
+                page = {}
+                content_lines = []
+                continue
 
-        if line.startswith(_URL_KEY):
-            page["url"] = line[len(_URL_KEY):].strip()
+            # Use a more efficient if/elif/else chain.
+            # Once a match is found, the other checks are skipped for this line.
+            if line.startswith(_URL_KEY):
+                page["url"] = line[len(_URL_KEY):].strip()
+            elif line.startswith(_URL_DATE):
+                page["timestamp"] = line[len(_URL_DATE):].strip()
+            elif line.startswith(_CONTENT_TYPE):
+                page["content_type"] = line[len(_CONTENT_TYPE):].strip()
+            elif line.startswith(_CONTENT_LANGUAGE):
+                page["content_language"] = line[len(_CONTENT_LANGUAGE):].strip()
+            elif not ls:
+                # An empty line separates the header from the content.
+                # We can use this as a signal, but for now we just skip it.
+                continue
+            elif line.startswith(_METADATA_PREFIXES):
+                # Skip other metadata lines we don't care about
+                continue
+            else:
+                # This is the most common case: a line of text content.
+                # Append to a list instead of concatenating strings.
+                content_lines.append(ls)
 
-        if line.startswith(_URL_DATE):
-            page["timestamp"] = line[len(_URL_DATE):].strip()
-
-        if line.startswith(_CONTENT_TYPE):
-            page["content_type"] = line[len(_CONTENT_TYPE):].strip()
-
-        if line.startswith(_CONTENT_LANGUAGE):
-            page["content_language"] = line[len(_CONTENT_LANGUAGE):].strip()
-
-        if line.startswith(_METADATA_PREFIXES):
-            continue
-
-        if "text" in page:
-            page["text"] += "\n"
-        page["text"] = page.get("text", "") + line
-
-    if _validate_features(page):
-        yield page
+    # Yield the last page in the file if it exists
+    if page and content_lines:
+        page["text"] = "\n".join(content_lines)
+        if _validate_features(page):
+            yield page
 
 
 def request_with_retry(connection_reset_retry=100, *args, **kwargs):
@@ -150,28 +210,24 @@ def request_with_retry(connection_reset_retry=100, *args, **kwargs):
             retries += 1
 
 
-
-def filter_and_process_text(text, badwords_list=None, 
+def filter_and_process_text(text, badwords=None, 
                             bad_words_ratio=0.05,
                             filter_simplified_chinese=True,
-                            SC_words_list=None, 
+                            sc_words=None, 
                             SC_words_ratio=0.01):
     """Filter lines from text and determine if document passes filters."""
     # Check if document has too many bad words
-    if is_bad_doc(text, badwords_list, bad_words_ratio):
+    if is_bad_doc(text, badwords, bad_words_ratio):
         return None
 
 
     if filter_simplified_chinese:
-        if is_SC_doc(text, SC_words_list, SC_words_ratio):
+        if is_SC_doc(text, sc_words, SC_words_ratio):
             return None            
 
     # Process and filter individual lines
-    output_lines = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not is_bad_line(line):
-            output_lines.append(line)
+    stripped_lines = (line.strip() for line in text.splitlines())
+    output_lines = [line for line in stripped_lines if not is_bad_line(line)]
     
     # If too few lines remain, reject the document
     if len(output_lines) <= 5:
@@ -190,8 +246,12 @@ def download_and_package(
     SC_words_ratio=0.01
     
 ):
+    badwords = build_badword_automaton(badwords_list)
+    sc_words = build_badword_automaton(SC_words_list)
+
     logging.basicConfig(level=logging.ERROR)
 
+    i = 0
     for _ in range(10):
         response = request_with_retry(connection_reset_retry=100, url=f"{CC_DOMAIN}/{cc_path}")
         download_file = io.BytesIO(response.content)
@@ -208,13 +268,11 @@ def download_and_package(
                             continue
                     elif "zho" not in page["content_language"].split(","):
                         continue
-
-                    filtered_text = filter_and_process_text(page["text"],  badwords_list=badwords_list, 
+                    filtered_text = filter_and_process_text(page["text"],  badwords=badwords, 
                         bad_words_ratio=bad_words_ratio,
                         filter_simplified_chinese=filter_simplified_chinese,
-                        SC_words_list=SC_words_list,
+                        sc_words=sc_words,
                         SC_words_ratio=SC_words_ratio)
-                    
                     if filtered_text:
                         page["text"] = filtered_text
                         page_list.append(page)
@@ -278,7 +336,6 @@ def main():
 
     # if not os.path.exists(output_dir_base):
     #     os.makedirs(output_dir_base)
-    
 
     rdd = spark.sparkContext.parallelize(cc_paths)\
         .repartition(4096)\
