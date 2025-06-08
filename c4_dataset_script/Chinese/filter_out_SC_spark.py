@@ -1,7 +1,13 @@
 """This script filter out simplified Chinese entries in the dataset.
 
 ```bash
-spark-submit --master "local[*]" [filter_out_SC_lines.py](http://_vscodecontentref_/1) --SC_words_filepath ../badwords/SC_list.txt --input docs.jsonl --output clean_docs
+spark-submit --master local[60] \
+    --executor-memory 12G \
+    --conf spark.local.dir=$SSD/spark_tmp \
+    Chinese/filter_out_SC_spark.py \
+        --input 2_download_2025_08/download-docs_${PJM_BULKNUM} \
+        --output 2_download_2025_08_deSC/removed_sc_${PJM_BULKNUM}/ \
+        --SC_words_filepath ./badwords/SC_list.txt \
 """
 
 import argparse 
@@ -63,15 +69,14 @@ def main():
         .getOrCreate()
 
 
-    docs = spark.sparkContext.textFile(input).repartition(32)
+    docs = spark.sparkContext.textFile(os.path.join(input, "part-*")).repartition(60)
 
     filtered = docs.map(lambda x: json.loads(x))\
         .filter(lambda x: not is_SC_doc(x['text'], SC_words_list, SC_words_ratio))
 
 
     filtered = filtered.map(lambda x: json.dumps(x, ensure_ascii=False))
-    filtered.saveAsTextFile(os.path.join(output, "clean_docs"))
-
+    filtered.saveAsTextFile(output)
     return 
 
 

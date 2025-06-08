@@ -7,6 +7,7 @@ import json
 from pyspark.sql import SparkSession
 import jieba
 
+from glob import glob
 
 def parse_args():
     parser = argparse.ArgumentParser("Filter out bad docs.")
@@ -105,7 +106,7 @@ def is_repetition_removal(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
-    parser.add_argument("--output", default="./rr_output")
+    parser.add_argument("--output", required=True)
     parser.add_argument("--output_bad_docs", type=bool, default=False,)
     args = parser.parse_args()
 
@@ -113,15 +114,19 @@ def main():
             .appName("Repetional Removal")\
             .getOrCreate()
 
-    docs = spark.sparkContext.textFile(args.input)\
-        .repartition(240)\
-        .map(lambda line: json.loads(line))\
-        .map(lambda doc: (doc, is_repetition_removal(doc["text"])))
+    
 
+    # docs = spark.sparkContext.textFile(os.path.join(args.input, "part-*")).repartition(120)
+    docs = spark.sparkContext.textFile(args.input).repartition(120)
+    
+    docs = docs.map(lambda x: json.loads(x))\
+        .map(lambda doc: (doc, is_repetition_removal(doc["text"])))
+    
     clean_docs = docs.filter(lambda x: not x[1])\
         .map(lambda x: json.dumps(x[0], ensure_ascii=False))
     
     clean_docs.saveAsTextFile(os.path.join(args.output, "clean_docs"))
+
 
     if args.output_bad_docs:
         bad_docs = docs.filter(lambda x: x[1])\

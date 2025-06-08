@@ -24,6 +24,7 @@ def parse_args():
 
 from cantonesedetect import CantoneseDetector
 from cantonesedetect import JudgementTypes
+import pandas as pd
 
 cantonese_types = JudgementTypes.JudgementType.CANTONESE
 cantonese_quotes_in_SWC_types = JudgementTypes.JudgementType.CANTONESE_QUOTES_IN_SWC
@@ -52,29 +53,81 @@ def main():
     input = args.input
     output = args.output
     
-    include_quotes = args.include_quotes
+    
     split = args.split
 
-    detector = CantoneseDetector(split_seg=split, use_quotes=include_quotes)
+    
 
     spark = SparkSession.builder \
         .appName("Filter Cantonese Entries") \
         .getOrCreate()
 
 
-    docs = spark.sparkContext.textFile(input).repartition(8)
+    docs = spark.sparkContext.textFile(os.path.join(input, "part-*")).repartition(120)
 
-    if include_quotes:
-        filtered = docs.map(lambda x: json.loads(x))\
-            .filter(lambda x: is_cantonese_quotes_in_SWC(x['text'], detector))
-        filtered.map(lambda x: json.dumps(x, ensure_ascii=False))\
-            .saveAsTextFile(os.path.join(output, "clean_docs"))
-        
-    else:
-        filtered = docs.map(lambda x: json.loads(x))\
-            .filter(lambda x: is_cantonese(x['text'], detector))
-        filtered.map(lambda x: json.dumps(x, ensure_ascii=False))\
-            .saveAsTextFile(os.path.join(output, "clean_docs"))
+
+    detector = CantoneseDetector(split_seg=split, use_quotes=False)
+
+    filtered_no_quotes = docs.map(lambda x: json.loads(x))\
+        .filter(lambda x: is_cantonese(x['text'], detector))
+    
+
+    detector = CantoneseDetector(split_seg=split, use_quotes=True)
+    filtered_with_quotes = docs.map(lambda x: json.loads(x))\
+        .filter(lambda x: is_cantonese_quotes_in_SWC(x['text'], detector))
+
+    # Collect and save filtered_no_quotes
+    filtered_docs_no_quotes = filtered_no_quotes.map(lambda x: json.dumps(x, ensure_ascii=False)).collect()
+    with open(os.path.join(output, "no_quotes.jsonl"), "w", encoding="utf-8") as f:
+        for doc in filtered_docs_no_quotes:
+            f.write(doc + "\n")
+    df_no_quotes = pd.read_json(os.path.join(output, "no_quotes.jsonl"), lines=True)
+    df_no_quotes.to_parquet(os.path.join(output, "no_quotes.parquet"), index=False)
+    # Collect and save filtered_with_quotes
+    filtered_docs_with_quotes = filtered_with_quotes.map(lambda x: json.dumps(x, ensure_ascii=False)).collect()
+    with open(os.path.join(output, "with_quotes.jsonl"), "w", encoding="utf-8") as f:
+        for doc in filtered_docs_with_quotes:
+            f.write(doc + "\n")
+    df_with_quotes = pd.read_json(os.path.join(output, "with_quotes.jsonl"), lines=True)
+    df_with_quotes.to_parquet(os.path.join(output, "with_quotes.parquet"), index=False)
+
+
+
+    # Filter out entries from specific domains. 
+    # They should not be obtained via common crawl. 
+    # Use other methods to obtain the full set of entries
+    exclude_domains = [
+        "wikipedia",
+        "lihkg",
+    ]
+
+    def is_allowed_domain(url):
+        for domain in exclude_domains:
+            if domain in url:
+                return False
+        return True
+
+    def filter_by_domain(docs):
+        return [doc for doc in docs if is_allowed_domain(json.loads(doc).get("url", ""))]
+
+    # Filter clean_docs_no_quotes by domain
+    filtered_docs_no_quotes_domain = filter_by_domain(filtered_docs_no_quotes)
+    with open(os.path.join(output, "no_quotes_domain_cleaned.jsonl"), "w", encoding="utf-8") as f:
+        for doc in filtered_docs_no_quotes_domain:
+            f.write(doc + "\n")
+    
+    filtered_df_no_quotes_domain = pd.read_json(os.path.join(output, "no_quotes_domain_cleaned.jsonl"), lines=True)
+    filtered_df_no_quotes_domain.to_parquet(os.path.join(output, "no_quotes_domain_cleaned.parquet"), index=False)
+
+
+    # Filter clean_docs_with_quotes by domain
+    filtered_docs_with_quotes_domain = filter_by_domain(filtered_docs_with_quotes)
+    with open(os.path.join(output, "with_quotes_domain_cleaned.jsonl"), "w", encoding="utf-8") as f:
+        for doc in filtered_docs_with_quotes_domain:
+            f.write(doc + "\n")
+    
+    filtered_df_with_quotes_domain = pd.read_json(os.path.join(output, "with_quotes_domain_cleaned.jsonl"), lines=True)
+    filtered_df_with_quotes_domain.to_parquet(os.path.join(output, "with_quotes_domain_cleaned.parquet"), index=False)
 
     return 
 

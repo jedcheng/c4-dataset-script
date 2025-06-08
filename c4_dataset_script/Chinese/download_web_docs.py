@@ -37,6 +37,59 @@ def check_if_gz_file_corrupted(gz_file):
         except:
             return True
 
+import re
+
+def is_bad_line(line):
+    ending_punctuations = ["。", "！", "？", "……", "”", "："]
+    if not any(line.endswith(punc) for punc in ending_punctuations):
+        return True
+
+    if len(line) < 5:
+        return True
+
+    ill_word_regex = "[-]|□|■|�"
+
+    if re.search(ill_word_regex, line) != None:
+        return True
+
+    return False
+
+def is_bad_doc(doc_text, badwords_list, ratio_threshold=0.05):
+    """Check if text contains too many bad words."""
+    if not badwords_list:
+        return False
+        
+    bad_words_character_count = 0
+    for bad_word in badwords_list:
+        if bad_word in doc_text:
+            bad_words_character_count += doc_text.count(bad_word) * len(bad_word)
+    
+    if bad_words_character_count / len(doc_text) > ratio_threshold:
+        return True
+    return False
+
+
+def load_word_list(filepath):
+    """Load a word list from a file."""
+    if not filepath or not os.path.exists(filepath):
+        return []
+        
+    with open(filepath, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
+
+def is_SC_doc(doc_text, SC_words_list, ratio_threshold): 
+    """Check if a document contains too many simplified Chinese words.""" 
+    SC_words_character_count = 0 
+
+    for SC_word in SC_words_list: 
+        SC_word = SC_word.strip()
+        if SC_word in doc_text: 
+            SC_words_character_count += doc_text.count(SC_word)* len(SC_word)
+
+    if SC_words_character_count / len(doc_text) > ratio_threshold:
+        return True
+    return False
+
 
 def split_wet_file(wet_file_path):
     def _validate_features(page):
@@ -97,11 +150,47 @@ def request_with_retry(connection_reset_retry=100, *args, **kwargs):
             retries += 1
 
 
+
+def filter_and_process_text(text, badwords_list=None, 
+                            bad_words_ratio=0.05,
+                            filter_simplified_chinese=True,
+                            SC_words_list=None, 
+                            SC_words_ratio=0.01):
+    """Filter lines from text and determine if document passes filters."""
+    # Check if document has too many bad words
+    if is_bad_doc(text, badwords_list, bad_words_ratio):
+        return None
+
+
+    if filter_simplified_chinese:
+        if is_SC_doc(text, SC_words_list, SC_words_ratio):
+            return None            
+
+    # Process and filter individual lines
+    output_lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not is_bad_line(line):
+            output_lines.append(line)
+    
+    # If too few lines remain, reject the document
+    if len(output_lines) <= 5:
+        return None
+        
+    return "\n".join(output_lines)
+
+
 def download_and_package(
     cc_path,
+    badwords_list=None,
     chinese_filtering=True,
+    bad_words_ratio=0.05,
+    filter_simplified_chinese=True,
+    SC_words_list=None,
+    SC_words_ratio=0.01
+    
 ):
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.ERROR)
 
     for _ in range(10):
         response = request_with_retry(connection_reset_retry=100, url=f"{CC_DOMAIN}/{cc_path}")
@@ -120,7 +209,15 @@ def download_and_package(
                     elif "zho" not in page["content_language"].split(","):
                         continue
 
-                page_list.append(page)
+                    filtered_text = filter_and_process_text(page["text"],  badwords_list=badwords_list, 
+                        bad_words_ratio=bad_words_ratio,
+                        filter_simplified_chinese=filter_simplified_chinese,
+                        SC_words_list=SC_words_list,
+                        SC_words_ratio=SC_words_ratio)
+                    
+                    if filtered_text:
+                        page["text"] = filtered_text
+                        page_list.append(page)
             break
         except (EOFError, gzip.BadGzipFile):
             continue
@@ -142,9 +239,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--wet-paths", nargs="+", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--spark-sub-job", default=50, type=int,
-        help="From the data dimention, divide the spark job into sub-jobs, reducing the loss of job failed.")
+    # parser.add_argument("--spark-sub-job", default=10, type=int,
+    #     help="From the data dimention, divide the spark job into sub-jobs, reducing the loss of job failed.")
     parser.add_argument("--array_index", default=0, type=int)
+    parser.add_argument("--badwords_filepath", default=None,
+        help="Path to file containing bad words to filter out")
+    parser.add_argument("--bad_words_ratio", default=0.05, type=float,
+    help="Threshold ratio for filtering documents with bad words")
+    parser.add_argument("--simplified_chinese_filtering", action="store_true",
+        help="Whether to filter out documents that are not in simplified Chinese")
+    parser.add_argument("--SC_words_filepath", default=None,
+        help="The file path of the toxic word dictionary, if you set this "
+        "argument, the program will filter out which document has over limit of"
+        " toxic word count. The format of the dictionary file is one word per"
+        "line."
+    )
+    parser.add_argument("--SC_words_ratio", default=0.01, type=float,
+        help="Document filtering conditions, when the number of SC words in the document exceeds this ratio, it will be screened out.")
+
+    
     args = parser.parse_args()
 
     spark = SparkSession.builder\
@@ -163,19 +276,22 @@ def main():
     
     output_dir_base = args.output + "_" + str(array_index)
 
-    if not os.path.exists(output_dir_base):
-        os.makedirs(output_dir_base)
+    # if not os.path.exists(output_dir_base):
+    #     os.makedirs(output_dir_base)
     
-    for i in range(args.spark_sub_job):
-        batch_size = len(cc_paths) // args.spark_sub_job + 1
-        input =  cc_paths[i * batch_size: (i + 1) * batch_size]
-        output_dir = os.path.join(output_dir_base, str(i))
-        rdd = spark.sparkContext.parallelize(input)\
-            .repartition(128)\
-            .flatMap(lambda cc_path: download_and_package(cc_path, args.output))\
-            .map(lambda page: json.dumps(page, ensure_ascii=False))
 
-        rdd.saveAsTextFile(output_dir)
+    rdd = spark.sparkContext.parallelize(cc_paths)\
+        .repartition(4096)\
+        .flatMap(lambda cc_path: download_and_package(cc_path, 
+            badwords_list=load_word_list(args.badwords_filepath), 
+            chinese_filtering=True,
+            bad_words_ratio=args.bad_words_ratio,
+            filter_simplified_chinese=args.simplified_chinese_filtering,
+            SC_words_list=load_word_list(args.SC_words_filepath),
+            SC_words_ratio=args.SC_words_ratio))\
+        .map(lambda page: json.dumps(page, ensure_ascii=False))
+    
+    rdd.saveAsTextFile(output_dir_base)
 
 
 if __name__ == "__main__":

@@ -1,125 +1,120 @@
-# C4 Dataset Script
+# Traditional Chinese Web Corpus Pipeline
 
-[C4](https://www.tensorflow.org/datasets/catalog/c4) is a great way to get a colossal cleaned web corpus. Unfortunately, Google open-sourced c4 script highly depends on GCP and code mixed in a big repo. Therefore, it takes work to develop it freely. This repository extracts the processing logic and implements it to run on Spark. In addition, some helpful data process method in MassiveText is implemented in massivetext_utils.py.
+This repository provides a Spark-based pipeline for building a high-quality Traditional Chinese web corpus, inspired by C4 and MassiveText, but fully re-engineered for efficiency, robustness, and Traditional Chinese focus.
 
+## Updates since Last Version
 
-The original [repo](https://github.com/shjwudp/c4-dataset-script) is amazing. I further customized based on the code to run on a PBS cluster as well as adding a filter to filter out simplified Chinese entries. 
+- **Robust Downloading:** All WET files are downloaded with retry logic to handle 503 errors from the Common Crawl API.
+- **Integrated Filtering:** Non-sentence line removal, toxic word filtering, garbled character removal, and Simplified Chinese filtering are all performed during download to save disk space and compute. (To also slow down the download speed to avoid 503 errors.)
+- **Traditional Chinese Only:** By default, only Traditional Chinese documents are retained. This saves me CPU, RAM, disk, and time. (There are already better Simplified Chinese datasets available.)
+- **Efficient Spark Pipeline:** All major steps are now parallelized with Spark for scalability.
+- **Multi-level Deduplication:** Both line-level and document-level deduplication are performed, including MinHash-based near-duplicate detection.
+- **Optional Cantonese Filtering:** Extract Cantonese documents for low-resource NLP research.
 
+---
 
-## Run c4 script on Spark
+## Pipeline Overview
 
-Setup c4 work environment.
+### 1. Download and Filter WET Files
 
-```bash
-# 1. Create an independent Anaconda environment and install python dependencies
-conda create -y -n c4-env conda-pack && conda activate c4-env
-pip install git+https://github.com/shjwudp/c4-dataset-script
+- Downloads all WET files, retrying on failure (e.g., HTTP 503).
+- For each document:
+  - Removes lines that are not sentences (using C4 heuristics).
+  - Removes lines with garbled characters.
+  - Removes documents with excessive toxic/bad words.
+  - **Filters out Simplified Chinese documents by default.**
+- All keyword based filtering is done on-the-fly to minimize disk usage.
 
-# 2. Download punkt tokenizer
-python -m nltk.downloader -d $(which python | xargs dirname)/../nltk_data punkt
+### 2. Remove Self-Repeating Documents (Local Repetition Removal)
 
-# 3. Run pyspark requires JAVA to be installed in your environment, you should
-#    make sure you have JDK installed and JAVA_HOME configured.
-```
+- Removes documents with excessive internal repetition (e.g., spam, boilerplate, or copy-paste artifacts).
+- Implements the "Repetition Removal" strategy from [Gopher](https://arxiv.org/abs/2112.11446).
+- This step is performed **before** global deduplication to maximize quality.
+- Removes ~20% of documents that are self-repeating. This is relatively computationally expensive, but it can be ran in batches to avoid OOM (the next 2 steps cannot be ran in batches).
 
+### 3. Remove Duplicate and Boilerplate Lines
 
-## 1. Download the WET crawl archive index file
+- Hash-based filtering lines that are occurs more than oce
+- Especially effective at removing repeated headers, footers, and web boilerplate.
+- I tried to improve this process using regexes in order to preserve more content, but it removed more than the original method while yielding a worse result.
 
-Common Crawl organized crawled data into some archives. You can browse the archives list from [here](https://commoncrawl.org/the-data/get-started/). In the next step, we will download text data (WET) as the input of processing. First, download the WET crawl archive index file.
+### 4. Remove Near-Duplicate Documents (MinHash LSH)
 
-```bash
-cd c4_dataset_script
-wget -r --no-parent https://data.commoncrawl.org/crawl-data/${CRAWL_ARCHIVE_ID}/wet.paths.gz
-```
-*You can get CRAWL_ARCHIVE_ID [here](https://commoncrawl.org/the-data/get-started/). For instance: CC-MAIN-2022-49.*
+- Uses MinHash and Locality Sensitive Hashing (LSH) to efficiently detect and remove near-duplicate documents.
+- Handles low-effort template-based, copy-paste and multi-crawled content.
+- Only one representative from each near-duplicate cluster is retained.
 
+### 5. (Optional) Filter for Cantonese
 
-## 2. Run download and Chinese screening script on Spark
+- Optionally, extract Cantonese documents using [Cantonese Detect](https://github.com/CanCLID/cantonesedetect).
+- Useful for low-resource Cantonese NLP research.
 
-All the following commands are outdated. I am too lazy to update them.
-Please use the bash scripts written for PBS cluster to do so by splitting the entire process into 20 parts.
+---
 
-There are 100,000 files in the WET crawl. Divide into 20 jobs each with 5,000 files.
-Don't rush all the files at once, you will miss out a lot of files.
+## Example Usage
 
+**All steps are Spark jobs. Use the provided bash scripts if uncler (I am very lazy to write a proper readme).**
 
-```bash
-spark-submit --master ${SPARK_MASTER_ADDR} \
-    Chinese/download_web_docs.py \
-        --wet-paths ./data.commoncrawl.org/crawl-data/${CRAWL_ARCHIVE_ID}/wet.paths.gz \
-        --output ./download-docs
-```
-
-
-
-
-
-
-## 3. Filter out non-sentence lines and toxic document
-
-Refer to the c4 heuristics method. I used the following strategies for cleaning up Common Crawl's web-extracted text:
-
-- Only retained lines that ended in a terminal punctuation mark or colon.
-- Discarded any page with fewer than five sentences and only retained lines that
-contained at least five words.
-- Removed any page that contained any word on the "List of Dirty, Naughty, Obscene
-or Otherwise Bad Words."
-- Many of the scraped pages contained Chinese garbled, so we removed any line with the garbled characters. For example: "[-]|□|■|�".
-
-```bash
-cat ./download-docs/*/part-* | \
-    python Chinese/filter_out_bad_lines.py \
-        --badwords_filepath ./badwords/zh \
-         > clean_docs.jsonl
-```
-
-*About 93.57% of documents are filtered out in this stage. You can see samples of filtered documents [here](data/Chinese_bad-lines_samples.jsonl).*
-
-
-This part is yet to be parallelized. The script uses the old logic of cat and pipe, which is not efficient. I will migrate this to Spark just like the other parts.
-
-
-
-
-## 4. Remove duplicated text
-
-To eliminate duplicate text, I use the text deduplication strategy from C4. The algorithm divides the document into lines, hashes them, and removes any duplicate lines from the dataset. This effective approach is particularly useful for removing repeated header and footer content.
+### Download and Filter
 
 ```bash
 spark-submit --master ${SPARK_MASTER_ADDR} \
-    Chinese/remove_duplicate_text.py \
-        --input clean_docs.jsonl \
-        --output ./deduplicated_text
+    Chinese/download_and_filter.py \
+    --wet-paths ./data.commoncrawl.org/crawl-data/${CRAWL_ARCHIVE_ID}/wet.paths.gz \
+    --output ./downloaded_and_filtered_docs
 ```
 
-
-*About 62.67% of documents are filtered out in this stage. You can see samples of filtered lines [here](data/Chinese_Remove-Duplicated-Text_samples.jsonl).*
-
-
-
-
-## 5. Remove documents that are over self-repeating - Repetition Removal in DeepMind MassiveText
-
-Check the percentage of duplicate content in the web document, and the program will remove documents whose duplicate proportion exceeds the preset threshold. This function implements "Repetition Removal" as described in [Gopher](https://arxiv.org/abs/2112.11446).
+### Remove Self-Repeating Documents
 
 ```bash
 spark-submit --master ${SPARK_MASTER_ADDR} \
     Chinese/repetition_removal.py \
-        --input clean_docs.jsonl \
-        --output ./repetition_removal_output
+    --input ./downloaded_and_filtered_docs \
+    --output ./repetition_removed_docs
 ```
 
-*About 21.21% of documents are filtered out in this stage. You can see samples of filtered documents [here](data/Chinese_Repetition-Removal_samples.jsonl).*
+### Remove Duplicate Lines
 
-## 6. Remove Simplified Chinese documents (optional)
-This step is optional. I have optimized the script to use Spark to do the job in parallel.
-Refer to the SC_filter folder for how I obtained the list of simplified Chinese characters (TLDR I manually removed words that are shared between simplified and traditional Chinese from a list of simplified Chinese characters). 
+```bash
+spark-submit --master ${SPARK_MASTER_ADDR} \
+    Chinese/remove_duplicate_text.py \
+    --input ./repetition_removed_docs \
+    --output ./deduplicated_text
+```
 
+### Remove Near-Duplicate Documents (MinHash)
 
+```bash
+spark-submit --master ${SPARK_MASTER_ADDR} \
+    Chinese/remove_duplicate_minhash.py \
+    --input ./deduplicated_text \
+    --output ./minhash_deduped_docs \
+    --threshold 0.3 # by default, removed 20% of documents
+```
 
-## 7. Filter Cantonese documents (optional)
-As a researchers in Cantonese NLP, we are interested in Cantonese documents. Using [Cantonese Detect](https://github.com/CanCLID/cantonesedetect) to extract Cantonese documents for further research. 
+### (Optional) Filter for Cantonese
 
-The size of the dataset went from 21GB after removing simplified Chinese to 110MB. This is why Cantonese is a low resource language.
+```bash
+spark-submit --master ${SPARK_MASTER_ADDR} \
+    Chinese/filter_cantonese.py \
+    --input ./minhash_deduped_docs \
+    --output ./cantonese_docs
+```
 
-You can choose whether to include Cantonese quotes in written Chinese documents as well as splitting the documents in phases for higher accuracy but lower recall. 
+---
+
+## Notes
+
+- **Simplified Chinese Filtering:** Always on by default. Only Traditional Chinese is kept.
+- **Disk Usage:** All filtering is performed as early as possible to minimize disk and compute requirements.
+- **PBS/Cluster:** For large-scale runs, use the provided PBS scripts to split the workload (e.g., 20 jobs × 5,000 files each).
+- **Customization:** Regexes and thresholds for boilerplate and repetition removal can be easily adjusted in the scripts.
+
+---
+
+## Credits
+
+- Based on [shjwudp/c4-dataset-script](https://github.com/shjwudp/c4-dataset-script) with extensive modifications.
+- Inspired by C4 and DeepMind MassiveText pipelines.
+- Cantonese detection via [CanCLID/cantonesedetect](https://github.com/CanCLID/cantonesedetect).
+

@@ -11,6 +11,9 @@ def jsonl_to_parquet(input_file, output_file):
     with open(input_file, 'r', encoding='utf-8') as f:
         for line in f:
             data.append(json.loads(line.strip()))
+
+
+    print(f"Read {len(data)} records from {input_file}")
     
     # Convert to pandas DataFrame
     df = pd.DataFrame(data)
@@ -34,7 +37,7 @@ if __name__ == "__main__":
     number = args.number
     total_no_files = args.total_no_files
 
-    output_file = join(output_path, f"{output_file_name}-{str(number).zfill(5)}-of-{str(total_no_files).zfill(5)}.parquet")
+    output_file = join(output_path, f"{output_file_name}-{str(number+1).zfill(5)}-of-{str(total_no_files).zfill(5)}.parquet")
 
 
     jsonl_to_parquet(input_file, output_file)

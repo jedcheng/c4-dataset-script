@@ -15,7 +15,6 @@ REQUIRED_PKGS = [
 setup(
     name="c4-dataset-script",
     author="Jed Cheng",
-    author_email="shjwudp@gmail.com",
     url="https://github.com/jedcheng/c4-dataset-script",
     license="MIT",
     packages=find_packages(),
