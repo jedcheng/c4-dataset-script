@@ -60,17 +60,30 @@ def check_if_gz_file_corrupted(gz_file):
 
 import re
 
-def is_bad_line(line):
-    ending_punctuations = ["。", "！", "？", "……", "”", "："]
-    if not any(line.endswith(punc) for punc in ending_punctuations):
+ILL_WORD_REGEX = re.compile("[-□■�]") # Simplified the regex pattern as well
+
+# 2. Define constants outside the function.
+# 3. Use a tuple for `endswith`, which is faster than iterating a list.
+ENDING_PUNCTUATIONS = ("。", "！", "？", "……", "”", "：")
+MIN_LINE_LENGTH = 5
+
+def is_bad_line(line: str) -> bool:
+    """
+    Optimized check for a bad line.
+    Checks are ordered from cheapest to most expensive for fast short-circuiting.
+    """
+    # 4. Check cheapest condition first (length).
+    if len(line) < MIN_LINE_LENGTH:
         return True
 
-    if len(line) < 5:
+    # 5. Check next cheapest (endswith with a tuple).
+    if not line.endswith(ENDING_PUNCTUATIONS):
         return True
 
-    ill_word_regex = "[-]|□|■|�"
-
-    if re.search(ill_word_regex, line) != None:
+    # 6. Check most expensive condition last (regex search).
+    #    Using the pre-compiled regex object.
+    #    The `if regex.search(line):` is a more idiomatic check than `!= None`.
+    if ILL_WORD_REGEX.search(line):
         return True
 
     return False
@@ -197,7 +210,6 @@ def request_with_retry(connection_reset_retry=100, *args, **kwargs):
             retries += 1
 
 
-
 def filter_and_process_text(text, badwords=None, 
                             bad_words_ratio=0.05,
                             filter_simplified_chinese=True,
@@ -214,11 +226,8 @@ def filter_and_process_text(text, badwords=None,
             return None            
 
     # Process and filter individual lines
-    output_lines = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not is_bad_line(line):
-            output_lines.append(line)
+    stripped_lines = (line.strip() for line in text.splitlines())
+    output_lines = [line for line in stripped_lines if not is_bad_line(line)]
     
     # If too few lines remain, reject the document
     if len(output_lines) <= 5:
