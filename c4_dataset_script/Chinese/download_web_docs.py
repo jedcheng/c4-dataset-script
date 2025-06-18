@@ -135,63 +135,57 @@ def is_SC_doc(doc_text, sc_automaton, ratio_threshold):
 
 def split_wet_file(wet_file_path):
     """
-    Optimized WET file parser.
-    - Uses a list and .join() for efficient text aggregation.
-    - Uses an if/elif/else structure to avoid redundant checks.
-    - Assumes content lines are the most common and places them in the 'else' block.
+    Optimized WET file parser using a state machine and match-case.
+    - Reduces string operations per line by tracking state (header vs. content).
+    - Avoids running expensive checks for every content line.
+    - Uses match-case for cleaner header parsing (Python 3.10+).
     """
     def _validate_features(page):
-        # This function is fast enough, no changes needed.
         return "url" in page and "text" in page and "timestamp" in page
 
     page = {}
     content_lines = []
+    in_header = True
 
-    # Using 'rb' and decoding manually can be faster with large buffers,
-    # but 'rt' is simpler and the following optimizations are more critical.
     with gzip.open(wet_file_path, "rt", encoding='utf-8', errors='ignore') as f:
         for line in f:
-            # The page delimiter is the start of a new record's header
-            ls = line.strip()
-            if ls == _PAGE_DELIMITER:
+            if line.startswith(_PAGE_DELIMITER):
+                # This delimiter marks the end of the previous record's content
+                # and the start of a new record's header.
                 if page and content_lines:
-                    # Finalize the previous page
                     page["text"] = "\n".join(content_lines)
                     if _validate_features(page):
                         yield page
-
-                # Reset for the new page
+                
+                # Reset for the new record
                 page = {}
                 content_lines = []
+                in_header = True
                 continue
 
-            # Use a more efficient if/elif/else chain.
-            # Once a match is found, the other checks are skipped for this line.
-            if line.startswith(_URL_KEY):
-                page["url"] = line[len(_URL_KEY):].strip()
-            elif line.startswith(_URL_DATE):
-                page["timestamp"] = line[len(_URL_DATE):].strip()
-            elif line.startswith(_CONTENT_TYPE):
-                page["content_type"] = line[len(_CONTENT_TYPE):].strip()
-            elif line.startswith(_CONTENT_LANGUAGE):
-                page["content_language"] = line[len(_CONTENT_LANGUAGE):].strip()
-            elif not ls:
-                # An empty line separates the header from the content.
-                # We can use this as a signal, but for now we just skip it.
-                continue
-            elif line.startswith(_METADATA_PREFIXES):
-                # Skip other metadata lines we don't care about
-                continue
-            else:
-                # This is the most common case: a line of text content.
-                # Append to a list instead of concatenating strings.
-                content_lines.append(ls)
+            if in_header:
+                # The header is separated from the content by a blank line.
+                # Using match-case for cleaner parsing of header lines.
+                match line:
+                    case '\n':
+                        in_header = False
+                    case _ if line.startswith(_URL_KEY):
+                        page["url"] = line[len(_URL_KEY):].strip()
+                    case _ if line.startswith(_URL_DATE):
+                        page["timestamp"] = line[len(_URL_DATE):].strip()
+                    case _ if line.startswith(_CONTENT_TYPE):
+                        page["content_type"] = line[len(_CONTENT_TYPE):].strip()
+                    case _ if line.startswith(_CONTENT_LANGUAGE):
+                        page["content_language"] = line[len(_CONTENT_LANGUAGE):].strip()
+            else: # We are in the content part of the record
+                content_lines.append(line.strip())
 
-    # Yield the last page in the file if it exists
+    # Yield the very last record in the file if it exists
     if page and content_lines:
         page["text"] = "\n".join(content_lines)
         if _validate_features(page):
             yield page
+
 
 
 def request_with_retry(connection_reset_retry=100, *args, **kwargs):
@@ -257,7 +251,7 @@ def download_and_package(
         download_file = io.BytesIO(response.content)
         page_list = []
         try:
-            for page in tqdm(split_wet_file(download_file), desc=f"split_wet_file {download_file}"):
+            for page in tqdm(split_wet_file(download_file), desc=f"split_wet_file {cc_path}"):
                 if chinese_filtering:
                     if "content_language" not in page:
                         try:
@@ -297,8 +291,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--wet-paths", nargs="+", required=True)
     parser.add_argument("--output", required=True)
-    # parser.add_argument("--spark-sub-job", default=10, type=int,
-    #     help="From the data dimention, divide the spark job into sub-jobs, reducing the loss of job failed.")
     parser.add_argument("--array_index", default=0, type=int)
     parser.add_argument("--badwords_filepath", default=None,
         help="Path to file containing bad words to filter out")
@@ -330,15 +322,15 @@ def main():
     
     array_index = args.array_index
     cc_paths = cc_paths[int(array_index * 5000):int((array_index + 1) * 5000)]
-    
-    
+    # cc_paths = cc_paths[0:5]
+
     output_dir_base = args.output + "_" + str(array_index)
 
     # if not os.path.exists(output_dir_base):
     #     os.makedirs(output_dir_base)
 
     rdd = spark.sparkContext.parallelize(cc_paths)\
-        .repartition(4096)\
+        .repartition(5000)\
         .flatMap(lambda cc_path: download_and_package(cc_path, 
             badwords_list=load_word_list(args.badwords_filepath), 
             chinese_filtering=True,
@@ -348,7 +340,16 @@ def main():
             SC_words_ratio=args.SC_words_ratio))\
         .map(lambda page: json.dumps(page, ensure_ascii=False))
     
-    rdd.saveAsTextFile(output_dir_base)
+    # rdd.saveAsTextFile(output_dir_base)
+    collected_lines = rdd.collect()
+
+    output_file = f"{args.output}/clean_docs_{args.array_index}.jsonl"
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(collected_lines))
+        # Ensure the file ends with a newline for POSIX compliance
+        if collected_lines:
+            f.write('\n')
+
 
 
 if __name__ == "__main__":
