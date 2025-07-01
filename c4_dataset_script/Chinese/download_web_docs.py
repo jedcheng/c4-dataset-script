@@ -322,15 +322,15 @@ def main():
     
     array_index = args.array_index
     cc_paths = cc_paths[int(array_index * 5000):int((array_index + 1) * 5000)]
-    # cc_paths = cc_paths[0:5]
+    # cc_paths = cc_paths[0:100]
 
-    output_dir_base = args.output + "_" + str(array_index)
+    output_dir_base = os.path.join(args.output, str(array_index))
 
     # if not os.path.exists(output_dir_base):
     #     os.makedirs(output_dir_base)
 
     rdd = spark.sparkContext.parallelize(cc_paths)\
-        .repartition(5000)\
+        .repartition(1024)\
         .flatMap(lambda cc_path: download_and_package(cc_path, 
             badwords_list=load_word_list(args.badwords_filepath), 
             chinese_filtering=True,
@@ -340,16 +340,7 @@ def main():
             SC_words_ratio=args.SC_words_ratio))\
         .map(lambda page: json.dumps(page, ensure_ascii=False))
     
-    # rdd.saveAsTextFile(output_dir_base)
-    collected_lines = rdd.collect()
-
-    output_file = f"{args.output}/clean_docs_{args.array_index}.jsonl"
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(collected_lines))
-        # Ensure the file ends with a newline for POSIX compliance
-        if collected_lines:
-            f.write('\n')
-
+    rdd.saveAsTextFile(output_dir_base)
 
 
 if __name__ == "__main__":

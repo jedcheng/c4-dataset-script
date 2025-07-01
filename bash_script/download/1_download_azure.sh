@@ -6,20 +6,25 @@
 ##PJM -S
 
 
-source $HOME/venv/bin/activate
+
+cd $HOME/c4-dataset-script
+
+cd ${WKDIR}/c4-dataset-script
+
+source venv/bin/activate
+
+cd c4_dataset_script
 
 
-cd $HOME/c4-dataset-script/c4_dataset_script
-
-export CC_ID="2023_40"
+export CC_ID="2023_23"
 
 rm -rf 1_download_${CC_ID}/
 mkdir -p 1_download_${CC_ID}
 
 
 
-for PJM_BULKNUM in $(seq 0 0); do
-    spark-submit --master local[8]  \
+for PJM_BULKNUM in $(seq 0 17); do
+    spark-submit --master local[16]  \
         Chinese/download_web_docs.py \
             --wet-paths wet.paths.gz \
             --output 1_download_${CC_ID} \
