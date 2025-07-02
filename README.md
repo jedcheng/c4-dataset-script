@@ -51,6 +51,36 @@ This repository provides a Spark-based pipeline for building a high-quality Trad
 
 ---
 
+
+## Installation
+
+### 1. Set Up Python Environment
+
+Python **must be above 3.11 or 3.12** 
+
+```bash
+# (Optional) Check your Python version
+python3 --version
+
+# Create a virtual environment 
+python3.11 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install .
+```
+
+### 2. Install Java 17 (Required for Spark)
+On Ubuntu 
+
+```bash
+sudo apt update
+sudo apt install openjdk-17-jdk
+```
+
+---
+
+
 ## Example Usage
 
 **All steps are Spark jobs. Use the provided bash scripts if uncler (I am very lazy to write a proper readme).**
