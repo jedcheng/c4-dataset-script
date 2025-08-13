@@ -230,6 +230,18 @@ def filter_and_process_text(text, badwords=None,
     return "\n".join(output_lines)
 
 
+CJK_PATTERN = re.compile(r'[\u4e00-\u9fff]')
+
+def is_chinese(text, min_density=0.75):
+        
+    # Use the pre-compiled pattern
+    chinese_chars = CJK_PATTERN.findall(text)
+    
+    density = len(chinese_chars) / len(text)
+    
+    return density >= min_density
+
+
 def download_and_package(
     cc_path,
     badwords_list=None,
@@ -255,10 +267,17 @@ def download_and_package(
                 if chinese_filtering:
                     if "content_language" not in page:
                         try:
-                            language = langdetect.detect(page["text"])
-                        except langdetect.lang_detect_exception.LangDetectException:
+                            # language = langdetect.detect(page["text"])
+                            is_chinese_text = is_chinese(page["text"])
+                        # except langdetect.lang_detect_exception.LangDetectException:
+                        #     continue
+                        # if language not in ["zh-tw", "zh-cn"]:
+                        #     continue
+                        except Exception as e:
+                            logging.error(f"Error detecting language for {page['url']}: {e}")
                             continue
-                        if language not in ["zh-tw", "zh-cn"]:
+
+                        if not is_chinese_text:
                             continue
                     elif "zho" not in page["content_language"].split(","):
                         continue
@@ -330,7 +349,7 @@ def main():
     #     os.makedirs(output_dir_base)
 
     rdd = spark.sparkContext.parallelize(cc_paths)\
-        .repartition(1024)\
+        .repartition(4096)\
         .flatMap(lambda cc_path: download_and_package(cc_path, 
             badwords_list=load_word_list(args.badwords_filepath), 
             chinese_filtering=True,
