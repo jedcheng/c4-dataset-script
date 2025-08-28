@@ -17,7 +17,7 @@ source $HOME/venv/c4/bin/activate
 #     --total_no_files 8
 
 
-export CC_ID="2025_05"
+export CC_ID="2025_13"
 mkdir -p zh_cleaned/${CC_ID}
 
 

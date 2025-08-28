@@ -7,6 +7,8 @@ import xxhash
 from pyspark.sql import SparkSession
 import jieba
 
+jieba.set_dictionary('dict.txt.big')
+
 SEED = 42
 RNG = np.random.RandomState(SEED)
 # NON_ALPHA = re.compile(r"", re.UNICODE)
@@ -208,11 +210,11 @@ def main():
     )
 
     # Optionally save duplicate documents as well in a single JSON file for easier inspection
-    dup_docs = docs.filter(lambda x: x[1] not in dedup_ids).map(lambda x: x[0])
-    dup_docs_list = dup_docs.collect()
-    print(f"Number of duplicated documents: {len(dup_docs_list)}")
-    with open(os.path.join(args.output, "duplicate_docs.json"), "w", encoding="utf-8") as f:
-        json.dump(dup_docs_list, f, ensure_ascii=False, indent=2)
+    # dup_docs = docs.filter(lambda x: x[1] not in dedup_ids).map(lambda x: x[0])
+    # dup_docs_list = dup_docs.collect()
+    # print(f"Number of duplicated documents: {len(dup_docs_list)}")
+    # with open(os.path.join(args.output, "duplicate_docs.json"), "w", encoding="utf-8") as f:
+    #     json.dump(dup_docs_list, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     main()

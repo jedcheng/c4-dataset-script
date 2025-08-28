@@ -7,6 +7,9 @@ import json
 from pyspark.sql import SparkSession
 import jieba
 
+jieba.set_dictionary('dict.txt.big')
+
+
 from glob import glob
 
 def parse_args():

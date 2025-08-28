@@ -98,8 +98,9 @@ def main():
 
     clean_docs.map(lambda j: json.dumps(j, ensure_ascii=False)) \
         .saveAsTextFile(os.path.join(args.output, "clean_docs"))
-    removed_lines.map(lambda j: json.dumps(j, ensure_ascii=False)) \
-        .saveAsTextFile(os.path.join(args.output, "removed_lines"))
+
+    # removed_lines.map(lambda j: json.dumps(j, ensure_ascii=False)) \
+    #     .saveAsTextFile(os.path.join(args.output, "removed_lines"))
 
 if __name__ == "__main__":
     main()

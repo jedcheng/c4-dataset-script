@@ -5,12 +5,13 @@
 #PJM -j
 #PJM -S
 
+find . -name "J2*.out" | xargs rm 
 
 source $HOME/venv/c4/bin/activate
 
 
 ## export SSD="" # replace with your working directory
-export CC_ID="2025_13"
+export CC_ID="2018_26"
 
 cd $SSD 
 cd c4-dataset-script/c4_dataset_script
@@ -19,11 +20,6 @@ cd c4-dataset-script/c4_dataset_script
 # rm -rf 2_repetition_removal
 # mkdir -p 2_repetition_removal
 
-rm -rf 3_remove_duplicate_lines
-mkdir -p 3_remove_duplicate_lines
-
-rm -rf 4_remove_duplicate_docs
-mkdir -p 4_remove_duplicate_docs
 
 # for i in {0..17}
 # do
@@ -38,13 +34,18 @@ mkdir -p 4_remove_duplicate_docs
 #    echo "Finished processing chunk $i"
 # done
 
+rm -rf 3_remove_duplicate_lines
+mkdir -p 3_remove_duplicate_lines
+
+rm -rf 4_remove_duplicate_docs
+mkdir -p 4_remove_duplicate_docs
 
 spark-submit --driver-memory 64g --master local[120] --executor-memory 16G \
     --conf spark.local.dir=$SSD/spark_tmp \
     Chinese/remove_duplicate_text.py \
         --input 2_repetition_removal \
         --output 3_remove_duplicate_lines \
-        --array_index_upper_bound 17
+        --array_index_upper_bound 12
 
 
 
@@ -54,7 +55,7 @@ spark-submit --driver-memory 96g --master local[120] --executor-memory 32G \
         --input 3_remove_duplicate_lines/clean_docs \
         --output 4_remove_duplicate_docs \
 
-mkdir -p 6_filter_cantonese/${CC_ID}
+mkdir -p 5_filter_cantonese/${CC_ID}
 
 spark-submit  --driver-memory 32g --master local[120] --executor-memory 8G \
     --conf spark.local.dir=$SSD/spark_tmp/ \
@@ -68,6 +69,8 @@ cd ${SSD}/c4-dataset-script/huggingface
 
 
 mkdir -p cantonese/${CC_ID}
+
+echo "Copying parquet files to cantonese/${CC_ID}/"
 cp ${SSD}/c4-dataset-script/c4_dataset_script/5_filter_cantonese/${CC_ID}/*.parquet cantonese/${CC_ID}/
 
 mkdir -p zh_cleaned/${CC_ID}

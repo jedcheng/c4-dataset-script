@@ -12,7 +12,9 @@ source $HOME/venv/c4/bin/activate
 cd $SSD
 cd c4-dataset-script/c4_dataset_script
 
-export CC_ID="2024_33"
+export CC_ID="2018_26"
+
+rm -rf 2_repetition_removal/repetition_removed_${PJM_BULKNUM}
 
 spark-submit --master local[120] --driver-memory 12g \
     --conf spark.local.dir=$SSD/spark_tmp \

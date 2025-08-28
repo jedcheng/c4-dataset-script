@@ -1,6 +1,6 @@
 #!/bin/bash
 #PJM -L rscgrp=a-batch
-#PJM -L vnode-core=8
+#PJM -L vnode-core=16
 #PJM -L elapse=99:00:00
 #PJM -j
 ##PJM -S
@@ -11,7 +11,7 @@ source $HOME/venv/c4/bin/activate
 
 cd $SSD/c4-dataset-script/c4_dataset_script
 
-export CC_ID="2023_40"
+export CC_ID="2023_14"
 
 mkdir -p 1_download_${CC_ID}
 
