@@ -196,7 +196,8 @@ def main():
     print(f"Number of deduplicated documents: {dedup_docs.count()}")
 
     dedup_docs.map(lambda j: json.dumps(j, ensure_ascii=False)).saveAsTextFile(
-        os.path.join(args.output, "unique_docs")
+        os.path.join(args.output, "unique_docs"),
+        compressionCodecClass="org.apache.hadoop.io.compress.GzipCodec",
     )
 
     # Optionally save duplicate documents as well in a single JSON file for easier inspection

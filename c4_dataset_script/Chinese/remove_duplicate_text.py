@@ -90,7 +90,7 @@ def main():
     clean_docs, removed_lines = remove_duplicate_text(docs, min_num_sentences=args.min_num_lines)
 
     clean_docs.map(lambda j: json.dumps(j, ensure_ascii=False)) \
-        .saveAsTextFile(os.path.join(args.output, "clean_docs"))
+        .saveAsTextFile(os.path.join(args.output, "clean_docs"), compressionCodecClass="org.apache.hadoop.io.compress.GzipCodec")
 
     # removed_lines.map(lambda j: json.dumps(j, ensure_ascii=False)) \
     #     .saveAsTextFile(os.path.join(args.output, "removed_lines"))

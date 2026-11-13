@@ -126,13 +126,13 @@ def main():
     clean_docs = docs.filter(lambda x: not x[1])\
         .map(lambda x: json.dumps(x[0], ensure_ascii=False))
     
-    clean_docs.saveAsTextFile(os.path.join(args.output, "clean_docs"))
+    clean_docs.saveAsTextFile(os.path.join(args.output, "clean_docs"), compressionCodecClass="org.apache.hadoop.io.compress.GzipCodec")
 
 
     if args.output_bad_docs:
         bad_docs = docs.filter(lambda x: x[1])\
             .map(lambda x: json.dumps(x[0], ensure_ascii=False))
-        bad_docs.saveAsTextFile(os.path.join(args.output, "bad_docs"))
+        bad_docs.saveAsTextFile(os.path.join(args.output, "bad_docs"), compressionCodecClass="org.apache.hadoop.io.compress.GzipCodec")
 
 
 

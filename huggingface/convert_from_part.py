@@ -1,4 +1,5 @@
 import os
+import gzip
 import json
 import pyarrow 
 import argparse
@@ -8,7 +9,8 @@ import pyarrow.parquet as pq
 def read_jsonl_files(jsonl_files):
     for index, file_path in enumerate(jsonl_files):
         print(f"Reading file {index + 1}/{len(jsonl_files)}: {file_path}")
-        with open(file_path, 'r', encoding='utf-8') as f:
+        opener = gzip.open if file_path.endswith('.gz') else open
+        with opener(file_path, 'rt', encoding='utf-8') as f:
             for line in f:
                 yield json.loads(line)
 
