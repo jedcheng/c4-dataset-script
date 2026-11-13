@@ -7,19 +7,16 @@ import json
 from pyspark.sql import SparkSession
 import jieba
 
-jieba.set_dictionary('dict.txt.big')
+# Absolute path: Spark workers do not run this module's top-level code, so a
+# set_dictionary() call here only affects the driver. jieba_cut() sets it lazily
+# in whichever process does the cutting.
+DICT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dict.txt.big"))
 
 
-from glob import glob
-
-def parse_args():
-    parser = argparse.ArgumentParser("Filter out bad docs.")
-    parser.add_argument("--output_bad_docs", default="bad_docs.jsonl.zst",
-        help="output file for bad lines")
-
-    args = parser.parse_args()
-
-    return args
+def jieba_cut(text):
+    if jieba.dt.dictionary != DICT_PATH:
+        jieba.set_dictionary(DICT_PATH)
+    return jieba.lcut(text)
 
 
 def hash_text(text):
@@ -65,17 +62,19 @@ def is_repetition_removal(
     if float(dup_line_chars) / len(text) > duplicate_line_character_faction:
         return True
 
+    # Segment once; every n-gram check below reuses the same word list.
+    words = jieba_cut(text)
+
     top_ngram_character_fractions = [
         (2, 0.2),
         (3, 0.18),
         (4, 0.16),
     ]
     for ngram, threshold in top_ngram_character_fractions:
-        word_list = list(jieba.cut(text))
-        bgs = nltk.ngrams(word_list, ngram)
+        bgs = nltk.ngrams(words, ngram)
         fdist = nltk.FreqDist(bgs)
-        for word_list, repeat in fdist.items():
-            char_count = sum([len(word) for word in word_list])
+        for gram, repeat in fdist.items():
+            char_count = sum([len(word) for word in gram])
             if char_count * (repeat - 1) / len(text) > threshold:
                 return True
 
@@ -89,13 +88,12 @@ def is_repetition_removal(
     ]
     for ngram, threshold in duplicate_ngram_character_fractions:
         fdist = {}
-        word_list = list(jieba.cut(text))
-        mark = [0] * len(word_list)
-        for i in range(len(word_list) - ngram + 1):
-            bag = tuple(word_list[i: i + ngram])
+        mark = [0] * len(words)
+        for i in range(len(words) - ngram + 1):
+            bag = tuple(words[i: i + ngram])
             if bag in fdist:
                 for j in range(i, i + ngram):
-                    mark[j] = len(word_list[j])
+                    mark[j] = len(words[j])
                 fdist[bag] += 1
             else:
                 fdist[bag] = 1
@@ -108,9 +106,10 @@ def is_repetition_removal(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", required=True)
+    parser.add_argument("--input", required=True,
+        help="Path or glob of JSONL(.gz) files, e.g. 1_download_2016_30/chunk_*.jsonl.gz")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--output_bad_docs", type=bool, default=False,)
+    parser.add_argument("--output_bad_docs", action="store_true")
     args = parser.parse_args()
 
     spark = SparkSession.builder\
@@ -119,9 +118,8 @@ def main():
 
     
 
-    # docs = spark.sparkContext.textFile(os.path.join(args.input, "part-*")).repartition(120)
     docs = spark.sparkContext.textFile(args.input).repartition(120)
-    
+
     docs = docs.map(lambda x: json.loads(x))\
         .map(lambda doc: (doc, is_repetition_removal(doc["text"])))
     

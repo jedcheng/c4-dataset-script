@@ -7,7 +7,7 @@ import json
 from pyspark.sql import SparkSession
 
 
-MIN_NUM_SENTENCES = 5
+MIN_NUM_SENTENCES = 3
 
 
 
@@ -72,29 +72,22 @@ def remove_duplicate_text(docs, min_num_sentences=MIN_NUM_SENTENCES):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", required=True)
+    parser.add_argument("--input", required=True,
+        help="Path or glob of JSONL(.gz) files, e.g. 2_repetition_removal/clean_docs")
     parser.add_argument("--output", default="./rd_output")
-    parser.add_argument("--array_index_lower_bound", type=int, default=0)
-    parser.add_argument("--array_index_upper_bound", type=int, default=19)
+    parser.add_argument("--min_num_lines", type=int, default=MIN_NUM_SENTENCES,
+        help="Drop docs with fewer lines than this after line dedup (C4 uses 3)")
     args = parser.parse_args()
 
     spark = SparkSession.builder\
             .appName("Remove duplicate text")\
             .getOrCreate()
 
-    input_files = [
-        f"{args.input}/repetition_removed_{i}/clean_docs/part-*"
-        for i in range(args.array_index_lower_bound, args.array_index_upper_bound + 1)
-    ]
+    docs = spark.sparkContext.textFile(args.input)\
+        .map(lambda line: json.loads(line))\
+        .repartition(120).cache()
 
-    docs = None
-    for file_ in input_files:
-        file_rdd = spark.sparkContext.textFile(file_).map(lambda line: json.loads(line))
-        docs = file_rdd if docs is None else docs.union(file_rdd)
-
-    docs = docs.repartition(120).cache()
-
-    clean_docs, removed_lines = remove_duplicate_text(docs)
+    clean_docs, removed_lines = remove_duplicate_text(docs, min_num_sentences=args.min_num_lines)
 
     clean_docs.map(lambda j: json.dumps(j, ensure_ascii=False)) \
         .saveAsTextFile(os.path.join(args.output, "clean_docs"))

@@ -3,3 +3,5 @@ venv
 build
 1_download_20*
 allowed_host.txt
+c4_dataset_script/work/
+c4_dataset_script/cross_dump_index/
