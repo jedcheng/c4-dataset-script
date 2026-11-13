@@ -58,6 +58,15 @@ start from `cp hosts.example.json hosts.json` and fill in your hosts.
 | `auto_reboot` | Azure VM: heal it automatically when it stays slow or unreachable (see below); needs `azure_vm` + `azure_rg` |
 | `azure_vm`, `azure_rg` | the VM's Azure name and resource group, for `az vm restart/redeploy` |
 | `enabled` | `false` = finish running chunks, take no new ones |
+| `net_group` | share one site cap among several hosts (e.g. lab PC + MPI nodes on the same uplink). Defined at top level as `"net_groups": {"lab": {"max_mbps": 470, "night_max_mbps": 0}}`; split among enabled members by `procs`, and also limited by the host's own `max_mbps` |
+
+Top-level `"newest_first": true` hands out chunks newest crawl first instead of in `years` order.
+Caps count WET payload only: TCP/TLS overhead adds ~5-7% on the wire, so set a
+cap a little under the real limit (470 for a 500 Mbit/s budget).
+
+`CC_STATE` and `CC_CONFIG` point the controller at another state dir and config,
+so a second run keeps its own DB next to the first:
+`CC_STATE=state_v2 CC_CONFIG=hosts_v2.json python3 controller.py status`.
 
 Throughput reference (after the SC-filter speedup, ~3.6 s CPU per WET file on
 a modern core): an 8-vCPU Azure VM ≈ 1 Gbit/s worth of WET files, so the

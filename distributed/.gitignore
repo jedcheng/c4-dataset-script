@@ -1,3 +1,5 @@
 state/
 __pycache__/
 hosts.json
+hosts_v2.json
+state_v2/

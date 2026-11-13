@@ -82,7 +82,12 @@ ILL_WORD_REGEX = re.compile("[-□■�]") # Simplified the regex pattern
 
 # 2. Define constants outside the function.
 # 3. Use a tuple for `endswith`, which is faster than iterating a list.
-ENDING_PUNCTUATIONS = ("。", "！", "？", "……", "”", "：")
+# 」』 close quotes in Traditional Chinese, ⋯ is the TW/HK ellipsis, ～ is common in
+# informal writing. Half-width !? (LOOSE_ENDINGS) also end many informal TC/Cantonese
+# lines but end English boilerplate too ("Got it!"), so those lines must be mostly CJK.
+ENDING_PUNCTUATIONS = ("。", "！", "？", "……", "”", "：", "」", "』", "⋯", "～")
+LOOSE_ENDINGS = ("!", "?")
+LOOSE_MIN_CJK = 0.4
 MIN_LINE_LENGTH = 5
 
 def is_bad_line(line: str) -> bool:
@@ -96,7 +101,9 @@ def is_bad_line(line: str) -> bool:
 
     # 5. Check next cheapest (endswith with a tuple).
     if not line.endswith(ENDING_PUNCTUATIONS):
-        return True
+        if not (line.endswith(LOOSE_ENDINGS)
+                and len(CJK_PATTERN.findall(line)) >= LOOSE_MIN_CJK * len(line)):
+            return True
 
     # 6. Check most expensive condition last (regex search).
     #    Using the pre-compiled regex object.
@@ -258,6 +265,8 @@ def filter_and_process_text(text, badwords=None,
 
 
 CJK_PATTERN = re.compile(r'[\u4e00-\u9fff]')
+KANA_PATTERN = re.compile(r'[\u3040-\u30ff]')
+MAX_KANA = 0.05  # Japanese pages pass the CJK density test on their kanji alone
 
 def is_chinese(text, min_density=0.4):
     # CJK characters are never ASCII, so a text with too few non-ASCII characters
@@ -271,8 +280,9 @@ def is_chinese(text, min_density=0.4):
     chinese_chars = CJK_PATTERN.findall(text)
     
     density = len(chinese_chars) / len(text)
-    
-    return density >= min_density
+    if density < min_density:
+        return False
+    return len(KANA_PATTERN.findall(text)) <= MAX_KANA * n
 
 
 def filter_wet_pages(

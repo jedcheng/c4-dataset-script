@@ -38,11 +38,13 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
-STATE = os.path.join(HERE, "state")
+# CC_STATE / CC_CONFIG select a separate run (own database, staging, config), so a
+# new run never touches the record of an earlier one.
+STATE = os.path.abspath(os.environ.get("CC_STATE", os.path.join(HERE, "state")))
 DB_PATH = os.path.join(STATE, "state.db")
 STAGING = os.path.join(STATE, "staging")
 WET_PATHS_DIR = os.path.join(STATE, "wet_paths")
-CONFIG = os.path.join(HERE, "hosts.json")
+CONFIG = os.path.abspath(os.environ.get("CC_CONFIG", os.path.join(HERE, "hosts.json")))
 
 POLL_SECS = 60
 UPLOAD_EVERY_SECS = 600
@@ -86,9 +88,13 @@ def load_config():
 
 
 def claim_order():
-    """ORDER BY for handing out chunks: crawls of years listed first in
-    hosts.json "years" go first, then crawl and chunk order."""
-    years = [y for y in load_config().get("years", []) if str(y).isdigit()]
+    """ORDER BY for handing out chunks: with "newest_first": true, newest crawl
+    first; otherwise crawls of years listed first in hosts.json "years" go first,
+    then crawl and chunk order. Retry chunks (idx >= 90000) sort after their crawl."""
+    cfg = load_config()
+    if cfg.get("newest_first"):
+        return "crawl DESC, idx"
+    years = [y for y in cfg.get("years", []) if str(y).isdigit()]
     case = " ".join(f"WHEN '{y}' THEN {i}" for i, y in enumerate(years))
     prio = f"CASE substr(crawl, 9, 4) {case} ELSE {len(years)} END, " if years else ""
     return prio + "crawl, idx"
@@ -479,12 +485,31 @@ def in_window(window):
     return start <= now < end if start <= end else (now >= start or now < end)
 
 
+def current_cap(c, night):
+    """max_mbps, or night_max_mbps inside the global "night" window (0 = unlimited)."""
+    if "night_max_mbps" in c and night and in_window(night):
+        return c["night_max_mbps"]
+    return c.get("max_mbps", 0)
+
+
 def job_mbps(h):
-    """Current cap per chunk job: the host cap (night_max_mbps inside the global
-    "night" window, else max_mbps; 0 = unlimited) split over the host's slots."""
-    cap = h.cfg.get("max_mbps", 0)
-    if "night_max_mbps" in h.cfg and h.night and in_window(h.night):
-        cap = h.cfg["night_max_mbps"]
+    """Current cap per chunk job: the host cap split over the host's slots.
+
+    A host with "net_group" shares that group's cap (top-level "net_groups") with the
+    other enabled hosts of the group, in proportion to their "procs": e.g. the lab PC
+    and the MPI nodes behind it, which all use the lab's internet connection."""
+    cap = current_cap(h.cfg, h.night)
+    group = h.cfg.get("net_group")
+    if group:
+        conf = load_config()
+        gcap = current_cap(conf["net_groups"][group], conf.get("night"))
+        if gcap:
+            members = [w for w in conf["workers"]
+                       if w.get("net_group") == group and w.get("enabled", True)]
+            total = sum(w.get("procs", 1) for w in members) or 1
+            share = gcap * h.cfg.get("procs", 1) / total
+            cap = min(cap, share) if cap else share
+        # an unlimited group (e.g. at night) leaves only the host's own cap
     return cap / max(1, h.cfg.get("slots", 2))
 
 
