@@ -2,3 +2,4 @@ venv
 *.egg-info
 build
 1_download_20*
+allowed_host.txt

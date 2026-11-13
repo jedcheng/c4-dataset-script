@@ -1,0 +1,101 @@
+{
+  "years": [
+    "2025",
+    "2026",
+    "2014",
+    "2013",
+    "2015",
+    "2016",
+    "2017",
+    "2018",
+    "2019",
+    "2020",
+    "2021",
+    "2022",
+    "2023",
+    "2024"
+  ],
+  "chunk_size": 500,
+  "night": [
+    "18:00",
+    "10:00"
+  ],
+  "hpc": {
+    "ssh": "-i $HOME/.ssh/hpc.pem user@hpc.example.ac.jp",
+    "root": "/path/on/hpc/CommonCrawl"
+  },
+  "workers": [
+    {
+      "name": "azure1",
+      "ssh": "-i $HOME/.ssh/azure.pem azureuser@203.0.113.1",
+      "procs": 16,
+      "slots": 2,
+      "bbr": true,
+      "auto_reboot": true,
+      "azure_vm": "my-downloader1",
+      "azure_rg": "MY-RESOURCE-GROUP"
+    },
+    {
+      "name": "azure2",
+      "ssh": "-i $HOME/.ssh/azure.pem azureuser@203.0.113.2",
+      "procs": 16,
+      "slots": 2,
+      "bbr": true,
+      "auto_reboot": true,
+      "azure_vm": "my-downloader2",
+      "azure_rg": "MY-RESOURCE-GROUP"
+    },
+    {
+      "name": "lab",
+      "ssh": "-i $HOME/.ssh/lab.pem user@198.51.100.10",
+      "procs": 32,
+      "slots": 4,
+      "numa_nodes": 2,
+      "max_mbps": 250,
+      "night_max_mbps": 0
+    },
+    {
+      "name": "mpi1",
+      "ssh": "192.168.2.10",
+      "via": "lab",
+      "procs": 18,
+      "slots": 2,
+      "max_mbps": 150,
+      "night_max_mbps": 0
+    },
+    {
+      "name": "mpi2",
+      "ssh": "192.168.2.11",
+      "via": "lab",
+      "procs": 18,
+      "slots": 2,
+      "max_mbps": 150,
+      "night_max_mbps": 0
+    },
+    {
+      "name": "mpi3",
+      "ssh": "192.168.2.12",
+      "via": "lab",
+      "procs": 18,
+      "slots": 2,
+      "max_mbps": 150,
+      "night_max_mbps": 0
+    },
+    {
+      "name": "office",
+      "ssh": null,
+      "procs": 24,
+      "slots": 4,
+      "max_mbps": 900,
+      "night_max_mbps": 0
+    },
+    {
+      "name": "genkai",
+      "ssh": "-i $HOME/.ssh/hpc.pem user@login1.hpc.example.ac.jp",
+      "procs": 24,
+      "slots": 3,
+      "max_mbps": 4000,
+      "output_dir": "/path/on/hpc/CommonCrawl"
+    }
+  ]
+}
