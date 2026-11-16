@@ -42,28 +42,29 @@ def _remove_lines_from_text(el, min_num_sentences):
 def remove_duplicate_text(docs, min_num_sentences=MIN_NUM_SENTENCES):
     docs = docs.map(lambda doc: (doc["url"], doc))
 
+    # Only the line hash and the URL are needed to decide which doc keeps a
+    # line. Shuffling the line text as well overflowed the node's local disk
+    # on the larger dumps.
     def emit_url_to_lines(doc):
-        for line in doc["text"].splitlines():
-            yield hash_text(line.strip().lower()), (doc["url"], line)
+        url = doc["url"]
+        for h in {hash_text(line.strip().lower()) for line in doc["text"].splitlines()}:
+            yield h, url
 
-    def merge_duplicate_line_group(a, b):
-        if hash_text(a[0]) > hash_text(b[0]):
-            a, b = b, a
-        a[-1] += b[-1]
-        return a
+    def pick_url(a, b):
+        # Deterministic: the URL with the smallest hash keeps the line.
+        return a if hash_text(a) <= hash_text(b) else b
 
     line_to_selected_url = docs\
         .flatMap(lambda url_doc: emit_url_to_lines(url_doc[1]))\
-        .mapValues(lambda x: list(x) + [1])\
-        .reduceByKey(lambda a, b: merge_duplicate_line_group(a, b))
+        .reduceByKey(pick_url)
 
-    lines_to_keep = line_to_selected_url.map(lambda x: (x[1][0], x[0]))
+    lines_to_keep = line_to_selected_url.map(lambda x: (x[1], x[0]))
 
-    # Now, collect both cleaned docs and removed lines
+    # Not cached: only clean_docs is written, and caching also kept every
+    # removed line around.
     processed = docs.cogroup(lines_to_keep, numPartitions=1024)\
         .mapValues(lambda x: {"features": list(x[0])[0], "lines": list(x[1])})\
-        .flatMap(lambda x: _remove_lines_from_text(list(x), min_num_sentences=min_num_sentences))\
-        .cache()
+        .flatMap(lambda x: _remove_lines_from_text(list(x), min_num_sentences=min_num_sentences))
 
     clean_docs = processed.map(lambda x: x[1])
     removed_lines = processed.flatMap(lambda x: x[2])
