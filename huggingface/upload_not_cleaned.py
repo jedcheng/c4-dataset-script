@@ -17,6 +17,7 @@ import gzip
 import json
 import os
 import shutil
+import multiprocessing
 import threading
 import queue
 from multiprocessing import Pool
@@ -55,6 +56,24 @@ def convert_group(job):
             n += t.num_rows
     os.replace(tmp, out_path)
     return n
+
+
+def _upload_folder(kwargs):
+    HfApi().upload_folder(**kwargs)
+
+
+def upload_with_timeout(kwargs, timeout):
+    """upload_folder in a child process: a stalled connection can hang it forever
+    without raising, so kill it after `timeout` seconds and let the caller retry."""
+    p = multiprocessing.get_context("spawn").Process(target=_upload_folder, args=(kwargs,))
+    p.start()
+    p.join(timeout)
+    if p.is_alive():
+        p.kill()
+        p.join()
+        raise TimeoutError(f"no commit after {timeout} s")
+    if p.exitcode != 0:
+        raise RuntimeError(f"upload process exited with {p.exitcode}")
 
 
 def normalize_parquet(job):
@@ -152,6 +171,7 @@ def main():
     p.add_argument("--commit_message", default="{cc}: replace with 2026 download and cleaning")
     p.add_argument("--group_bytes", type=int, default=1_500_000_000, help="gz input per parquet file")
     p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--upload_timeout", type=int, default=1800, help="seconds per dump upload attempt")
     args = p.parse_args()
     if args.source == "download":
         args.repo_id = args.repo_id or "jed351/Traditional-Chinese-Common-Crawl-NOT-Cleaned"
@@ -190,11 +210,12 @@ def main():
     while (item := ready.get()) is not None:
         cc, out_dir, n, m = item
         print(f"{cc}: {n} rows in {m} files, uploading", flush=True)
-        for attempt in range(3):
+        for attempt in range(5):
             try:
-                api.upload_folder(repo_id=args.repo_id, repo_type="dataset", folder_path=out_dir,
-                                  path_in_repo=cc, delete_patterns="*",
-                                  commit_message=args.commit_message.format(cc=cc))
+                upload_with_timeout(dict(repo_id=args.repo_id, repo_type="dataset", folder_path=out_dir,
+                                         path_in_repo=cc, delete_patterns="*",
+                                         commit_message=args.commit_message.format(cc=cc)),
+                                    args.upload_timeout)
                 break
             except Exception as e:
                 print(f"{cc}: upload attempt {attempt + 1} failed {e!r}", flush=True)

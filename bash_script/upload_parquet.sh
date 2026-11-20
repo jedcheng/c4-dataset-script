@@ -8,11 +8,12 @@
 #
 #   pjsub -x REPO_ID=jed351/Cantonese_Common_Crawl_Filtered,INPUT_DIR=.../per_dump/cantonese,STAGING=... \
 #       -o $STAGING/job.%j.out bash_script/upload_parquet.sh
-# Resumable: dumps with $STAGING/done/<CC_ID> are skipped.
+# Resumable: dumps with $STAGING/done/<CC_ID> are skipped. Files with one large row group
+# (all/zh_cleaned) need ~7 GB per worker: e.g. -L vnode-core=16 -x WORKERS=4,...
 : "${REPO_ID:?}" "${INPUT_DIR:?}" "${STAGING:?}"
 MSG="{cc}: 2026 download and cleaning"
 mkdir -p $STAGING
 source $HOME/venv/c4/bin/activate
 cd ${REPO:-/fast/pj24001684/c4-dataset-script}
 python huggingface/upload_not_cleaned.py --source parquet --repo_id $REPO_ID --input_dir $INPUT_DIR \
-    --staging $STAGING --workers 8 --commit_message "$MSG" >> $STAGING/upload.log 2>&1
+    --staging $STAGING --workers ${WORKERS:-8} --commit_message "$MSG" >> $STAGING/upload.log 2>&1
