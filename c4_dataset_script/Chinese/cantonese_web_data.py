@@ -77,10 +77,14 @@ def finalize(args):
         rows = [json.loads(l) for l in gzip.open(path, "rt", encoding="utf-8")]
         if rows:
             tables.append(pa.Table.from_pylist(rows, schema=SCHEMA))
-    table = pa.concat_tables(tables)
-    table = table.take(pc.sort_indices(table, [("dump", "ascending"), ("url", "ascending")]))
+    # large_string in memory: the text column is over 2 GB, the limit of one string array.
+    big = pa.schema([(f.name, pa.large_string()) for f in SCHEMA])
+    table = pa.concat_tables([t.cast(big) for t in tables]).combine_chunks()
+    order = pc.sort_indices(table, [("dump", "ascending"), ("url", "ascending")])
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    pq.write_table(table, args.output, row_group_size=20_000, compression="zstd")
+    with pq.ParquetWriter(args.output, SCHEMA, compression="zstd") as w:
+        for i in range(0, len(order), 20_000):
+            w.write_table(table.take(order[i:i + 20_000]).cast(SCHEMA), row_group_size=20_000)
     chars = sum(len(t.replace(" ", "").replace("\n", "")) for t in table.column("text").to_pylist())
     print(f"Wrote {table.num_rows} documents, {chars} characters (excluding spaces and newlines) to {args.output}")
 
