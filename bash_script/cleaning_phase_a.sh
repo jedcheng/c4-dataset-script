@@ -12,12 +12,13 @@
 # reruns failed or unfinished ones. Log: $OUT_ROOT/logs/<CC_ID>.a.log
 
 source ${REPO:-/fast/pj24001684/c4-dataset-script}/bash_script/cleaning_env.sh
+# Skip before the log redirect, so a finished dump's log is not overwritten.
+if [ -f $OUT_ROOT/done/${CC_ID}.a ]; then echo "${CC_ID}: phase A already done"; exit 0; fi
 exec > >(tee $OUT_ROOT/logs/${CC_ID}.a.log) 2>&1
 
-if [ -f $OUT_ROOT/done/${CC_ID}.a ]; then echo "${CC_ID}: phase A already done"; exit 0; fi
 STAGE4=$OUT_ROOT/4_remove_duplicate_docs/${CC_ID}
 rm -rf $STAGE4
-echo "${CC_ID}: phase A on $(hostname), $CORES cores, $(date)"
+echo "${CC_ID}: phase A on $(hostname), $CORES cores, input $DOWNLOAD_DIR, $(date)"
 
 # Stage 2: Gopher repetition removal
 spark-submit $SPARK_OPTS --driver-memory 32g \

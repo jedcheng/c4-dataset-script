@@ -1,8 +1,9 @@
 
 import argparse
-import hashlib
 import os
 import json
+
+import xxhash
 
 from pyspark.sql import SparkSession
 
@@ -11,8 +12,10 @@ MIN_NUM_SENTENCES = 3
 
 
 
+# 64-bit integer hashes keep the shuffle small: with string MD5s and full URLs
+# the largest dumps overflowed the node's 120 GB local disk.
 def hash_text(text):
-    return hashlib.md5(text.encode("utf-8")).hexdigest()
+    return xxhash.xxh64_intdigest(text)
 
 
 def _remove_lines_from_text(el, min_num_sentences):
@@ -40,23 +43,19 @@ def _remove_lines_from_text(el, min_num_sentences):
     yield (url, new_features, removed_lines)
 
 def remove_duplicate_text(docs, min_num_sentences=MIN_NUM_SENTENCES):
-    docs = docs.map(lambda doc: (doc["url"], doc))
+    docs = docs.map(lambda doc: (hash_text(doc["url"]), doc))
 
-    # Only the line hash and the URL are needed to decide which doc keeps a
-    # line. Shuffling the line text as well overflowed the node's local disk
-    # on the larger dumps.
-    def emit_url_to_lines(doc):
-        url = doc["url"]
+    # Only the line hash and the URL hash are needed to decide which doc keeps
+    # a line; shuffling the line text or full URLs overflowed the node's local
+    # disk on the larger dumps.
+    def emit_url_to_lines(url_key, doc):
         for h in {hash_text(line.strip().lower()) for line in doc["text"].splitlines()}:
-            yield h, url
+            yield h, url_key
 
-    def pick_url(a, b):
-        # Deterministic: the URL with the smallest hash keeps the line.
-        return a if hash_text(a) <= hash_text(b) else b
-
+    # Deterministic: the doc whose URL has the smallest hash keeps the line.
     line_to_selected_url = docs\
-        .flatMap(lambda url_doc: emit_url_to_lines(url_doc[1]))\
-        .reduceByKey(pick_url)
+        .flatMap(lambda url_doc: emit_url_to_lines(*url_doc))\
+        .reduceByKey(min, numPartitions=1024)
 
     lines_to_keep = line_to_selected_url.map(lambda x: (x[1], x[0]))
 

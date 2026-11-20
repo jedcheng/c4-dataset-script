@@ -22,9 +22,10 @@ source ${REPO:-/fast/pj24001684/c4-dataset-script}/bash_script/cleaning_env.sh
 SCOPE=${SCOPE:-all}
 OUT=$OUT_ROOT/$SCOPE
 DONE=$OUT_ROOT/done/${CC_ID}.b.${SCOPE}
+# Skip before the log redirect, so a finished dump's log is not overwritten.
+if [ -f $DONE ]; then echo "${CC_ID}: phase B ($SCOPE) already done"; exit 0; fi
 exec > >(tee $OUT_ROOT/logs/${CC_ID}.b.${SCOPE}.log) 2>&1
 
-if [ -f $DONE ]; then echo "${CC_ID}: phase B ($SCOPE) already done"; exit 0; fi
 echo "${CC_ID}: phase B ($SCOPE, dumps from $DUMPS_FILE) on $(hostname), $CORES cores, $(date)"
 
 # Stage 4b: exact-duplicate removal; the latest dump containing a text keeps it

@@ -83,7 +83,8 @@ def cmd_filter(args):
         if h in kept_hashes:
             n_self += 1
             continue
-        i = np.searchsorted(seen, h)
+        # np.uint64: a plain int below 2**63 makes numpy convert all of `seen` on every call.
+        i = np.searchsorted(seen, np.uint64(h))
         if i < len(seen) and seen[i] == h:
             n_cross += 1
             continue

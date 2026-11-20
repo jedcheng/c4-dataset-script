@@ -14,7 +14,20 @@ DUMPS_FILE=${DUMPS_FILE:-$REPO/bash_script/dumps.txt}
 CC_ID=${CC_ID:-$(sed -n "${PJM_BULKNUM:?run as a bulk job or set CC_ID}p" $DUMPS_FILE)}
 : "${CC_ID:?no dump on line $PJM_BULKNUM of $DUMPS_FILE}"
 
+# Prefer a finished re-download (fixed download filters) over the original one.
+# Only for 2026 dumps this run; earlier dumps keep the original download.
+DOWNLOAD_V2_DIR=${DOWNLOAD_V2_DIR:-/home/pj24001684/ku40000295/jc/projects/CommonCrawl_v2}
+if [[ $CC_ID == 2026_* ]] && [ -e $DOWNLOAD_V2_DIR/1_download_${CC_ID}/_COMPLETE ]; then
+    DOWNLOAD_DIR=$DOWNLOAD_V2_DIR
+fi
+
 CORES=$(nproc)
+# Partial-node jobs have a small hidden quota on /tmp: set SCRATCH_ROOT (e.g. on
+# /home) to put the local scratch there instead.
+if [ -n "${SCRATCH_ROOT:-}" ]; then
+    TMPDIR=$SCRATCH_ROOT/$(echo ${PJM_JOBID:-$$}_${PJM_BULKNUM:-0} | tr -d '[]')
+    mkdir -p $TMPDIR
+fi
 # Bulk subjobs get TMPDIR=/tmp/<jobid>[<n>]_..., and Spark reads "[n]" in a path
 # as a glob. Work through a bracket-free symlink to it instead.
 LOCAL_LINK=/tmp/clean_${USER}_${CC_ID}_$$

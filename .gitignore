@@ -5,3 +5,6 @@ build
 allowed_host.txt
 c4_dataset_script/work/
 c4_dataset_script/cross_dump_index/
+__pycache__/
+# PJM job files
+.d00*
