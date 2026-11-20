@@ -3,7 +3,8 @@ cleaned and near-duplicate-removed (MinHash) across all dumps.
 
     prep      per-dump parquet -> gzipped JSONL part files for remove_duplicate_minhash.py,
               newest dump first, so each group of near-duplicates keeps its newest copy
-              (the MinHash script keeps the smallest document id).
+              (the MinHash script keeps the smallest document id). --keep oldest numbers
+              the oldest dump first instead, so the earliest crawl of a text is kept.
     finalize  unique_docs/part-*.gz -> one parquet file.
 
 Every row keeps its metadata: url, timestamp, content_language, content_type, dump.
@@ -54,7 +55,7 @@ def prep(args):
     dumps = [l.strip() for l in open(args.dumps_file) if l.strip()]
     os.makedirs(args.output)
     total = kept = 0
-    for i, cc in enumerate(sorted(dumps, reverse=True)):
+    for i, cc in enumerate(sorted(dumps, reverse=args.keep == "newest")):
         cols = normalize(pq.read_table(os.path.join(args.input, cc, f"{args.subset}.parquet")))
         rows = {k: v.to_pylist() for k, v in cols.items()}
         with gzip.open(os.path.join(args.output, f"part-{i:05d}.gz"), "wt", encoding="utf-8") as f:
@@ -97,6 +98,8 @@ def main():
     a.add_argument("--subset", required=True, help="e.g. no_quotes_domain_cleaned")
     a.add_argument("--dumps_file", required=True)
     a.add_argument("--output", required=True)
+    a.add_argument("--keep", choices=["newest", "oldest"], default="newest",
+                   help="which copy of a group of near-duplicates to keep")
     b = sub.add_parser("finalize")
     b.add_argument("--input", required=True, help="unique_docs folder of remove_duplicate_minhash.py")
     b.add_argument("--output", required=True, help="parquet file")
